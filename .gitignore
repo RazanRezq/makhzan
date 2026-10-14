@@ -24,3 +24,6 @@ coverage/
 
 # macOS
 .DS_Store
+
+# Local blueprints (not part of the repo)
+/PROJECTS_BLUEPRINT/
