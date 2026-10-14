@@ -1,0 +1,26 @@
+# Node / npm
+node_modules/
+.npm/
+*.log
+
+# Next.js
+.next/
+out/
+next-env.d.ts
+
+# NestJS / TypeScript build output
+dist/
+build/
+*.tsbuildinfo
+
+# Test output
+coverage/
+.nyc_output/
+
+# Local environment files; keep the template tracked
+.env
+.env.*
+!.env.example
+
+# macOS
+.DS_Store
