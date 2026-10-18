@@ -17,7 +17,7 @@ export default async function DashboardLayout({
       <Sidebar />
       <div className="flex min-h-dvh min-w-0 flex-col lg:ps-64">
         <Header />
-        <main id="main-content" tabIndex={-1} className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-8 lg:py-10">
+        <main id="main-content" tabIndex={-1} className="mx-auto min-w-0 w-full max-w-7xl flex-1 px-4 py-8 sm:px-8 lg:py-10">
           {children}
         </main>
         <footer className="px-4 py-6 text-center text-xs text-muted-foreground sm:px-8">

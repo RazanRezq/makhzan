@@ -32,6 +32,7 @@
     "skip": "Skip to main content",
     "workspace": "Your workspace",
     "overview": "Overview",
+    "products": "Products",
     "language": "Change language",
     "switchLanguage": "العربية",
     "switchLanguageLabel": "Switch to Arabic",
@@ -62,6 +63,100 @@
     "operationsDescription": "Bring purchasing, sales, and warehouse work into one workspace.",
     "reportsTitle": "A clearer perspective",
     "reportsDescription": "Understand your business with reports built around your activity."
+  },
+  "Products": {
+    "metadata": {
+      "title": "Products | Makhzan",
+      "description": "Browse and organize the synthetic Makhzan product catalog."
+    },
+    "eyebrow": "Product catalog",
+    "title": "Products",
+    "description": "Find and review the items your business works with.",
+    "demoLabel": "Synthetic demo data",
+    "tableTitle": "Product catalog",
+    "tableCaption": "Products with category, unit, status, and creation date",
+    "search": {
+      "label": "Search products",
+      "placeholder": "Search by name or SKU"
+    },
+    "filters": {
+      "category": "Category",
+      "allCategories": "All categories",
+      "status": "Status",
+      "allStatuses": "All statuses",
+      "clear": "Clear filters"
+    },
+    "sorting": {
+      "label": "Sort by",
+      "default": "Default order",
+      "nameAscending": "Name: A to Z",
+      "nameDescending": "Name: Z to A",
+      "skuAscending": "SKU: ascending",
+      "skuDescending": "SKU: descending",
+      "newest": "Newest first",
+      "oldest": "Oldest first"
+    },
+    "columns": {
+      "name": "Product",
+      "sku": "SKU",
+      "category": "Category",
+      "unit": "Unit",
+      "status": "Status",
+      "createdAt": "Created"
+    },
+    "categories": {
+      "beverages": "Beverages",
+      "food": "Food",
+      "cleaning": "Cleaning",
+      "packaging": "Packaging",
+      "officeSupplies": "Office supplies",
+      "personalCare": "Personal care"
+    },
+    "statuses": {
+      "active": "Active",
+      "inactive": "Inactive"
+    },
+    "units": {
+      "piece": "Piece",
+      "box": "Box",
+      "bottle": "Bottle",
+      "pack": "Pack",
+      "kilogram": "Kilogram",
+      "liter": "Liter",
+      "pair": "Pair"
+    },
+    "selection": {
+      "selectPage": "Select all products on this page",
+      "selectProduct": "Select {name}"
+    },
+    "counts": {
+      "products": "{count} products",
+      "selected": "{count} selected"
+    },
+    "pagination": {
+      "rowsPerPage": "Rows per page",
+      "page": "Page {page} of {total}",
+      "previous": "Previous page",
+      "next": "Next page"
+    },
+    "empty": {
+      "title": "No products yet",
+      "description": "Products will appear here when catalog data is available.",
+      "refresh": "Refresh products"
+    },
+    "noResults": {
+      "title": "No matching products",
+      "description": "Try a different search or clear the filters to see the full catalog."
+    },
+    "loading": {
+      "label": "Loading products",
+      "description": "The product catalog is loading."
+    },
+    "error": {
+      "title": "Products could not be loaded",
+      "description": "Something went wrong while loading the product catalog.",
+      "retry": "Try again"
+    }
   },
   "NotFound": {
     "code": "404",

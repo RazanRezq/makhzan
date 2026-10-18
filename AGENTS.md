@@ -206,6 +206,18 @@ Use domain-oriented service modules (e.g. `server/inventory/`). Keep entry point
 
 ---
 
+## Development Workflow (Docker-first)
+
+- Keep all source code in the host Git working tree. Never edit application source inside a running container.
+- Docker Compose is the mandatory primary development and verification environment. Local-host checks may supplement Docker checks, but static inspection or local-host success alone is not enough to claim completion.
+- Install and manage dependencies from the npm Workspaces root. Keep the root `package-lock.json` and container dependencies synchronized; when dependencies or Docker configuration change, rebuild or recreate only the affected containers before verification.
+- Do not rebuild containers for ordinary source-only changes. Confirm that Fast Refresh applies those changes in the running Docker application.
+- After adding or modifying routes, verify their actual HTTP status and response through the Docker-running application.
+- Run typecheck, lint, configured tests and the production build inside Docker before declaring a task complete.
+- Preserve Docker volumes, environment secrets and existing service configuration. Do not remove, reset or replace them unless the task explicitly requires it.
+
+---
+
 ## How to work on this repo
 
 - Keep each task small and focused. Don't build features that weren't asked for.

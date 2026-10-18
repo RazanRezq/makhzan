@@ -32,6 +32,7 @@
     "skip": "انتقل إلى المحتوى الرئيسي",
     "workspace": "مساحة عملك",
     "overview": "نظرة عامة",
+    "products": "المنتجات",
     "language": "تغيير اللغة",
     "switchLanguage": "English",
     "switchLanguageLabel": "التبديل إلى الإنجليزية",
@@ -62,6 +63,100 @@
     "operationsDescription": "اجمع المشتريات والمبيعات وأعمال المستودعات في مساحة واحدة.",
     "reportsTitle": "رؤية أكثر وضوحًا",
     "reportsDescription": "افهم أعمالك من خلال تقارير مبنية على نشاطك."
+  },
+  "Products": {
+    "metadata": {
+      "title": "المنتجات | مخزن",
+      "description": "تصفح ونظّم دليل منتجات مخزن التجريبي."
+    },
+    "eyebrow": "دليل المنتجات",
+    "title": "المنتجات",
+    "description": "ابحث عن الأصناف التي يتعامل معها نشاطك وراجع تفاصيلها.",
+    "demoLabel": "بيانات تجريبية اصطناعية",
+    "tableTitle": "دليل المنتجات",
+    "tableCaption": "المنتجات مع الفئة والوحدة والحالة وتاريخ الإنشاء",
+    "search": {
+      "label": "البحث في المنتجات",
+      "placeholder": "ابحث بالاسم أو رمز الصنف"
+    },
+    "filters": {
+      "category": "الفئة",
+      "allCategories": "كل الفئات",
+      "status": "الحالة",
+      "allStatuses": "كل الحالات",
+      "clear": "مسح عوامل التصفية"
+    },
+    "sorting": {
+      "label": "الترتيب حسب",
+      "default": "الترتيب الافتراضي",
+      "nameAscending": "الاسم: تصاعدي",
+      "nameDescending": "الاسم: تنازلي",
+      "skuAscending": "رمز الصنف: تصاعدي",
+      "skuDescending": "رمز الصنف: تنازلي",
+      "newest": "الأحدث أولاً",
+      "oldest": "الأقدم أولاً"
+    },
+    "columns": {
+      "name": "المنتج",
+      "sku": "رمز الصنف",
+      "category": "الفئة",
+      "unit": "الوحدة",
+      "status": "الحالة",
+      "createdAt": "تاريخ الإنشاء"
+    },
+    "categories": {
+      "beverages": "المشروبات",
+      "food": "الأغذية",
+      "cleaning": "التنظيف",
+      "packaging": "التغليف",
+      "officeSupplies": "اللوازم المكتبية",
+      "personalCare": "العناية الشخصية"
+    },
+    "statuses": {
+      "active": "نشط",
+      "inactive": "غير نشط"
+    },
+    "units": {
+      "piece": "قطعة",
+      "box": "صندوق",
+      "bottle": "زجاجة",
+      "pack": "عبوة",
+      "kilogram": "كيلوغرام",
+      "liter": "لتر",
+      "pair": "زوج"
+    },
+    "selection": {
+      "selectPage": "تحديد كل المنتجات في هذه الصفحة",
+      "selectProduct": "تحديد {name}"
+    },
+    "counts": {
+      "products": "{count} منتج",
+      "selected": "تم تحديد {count}"
+    },
+    "pagination": {
+      "rowsPerPage": "عدد الصفوف في الصفحة",
+      "page": "الصفحة {page} من {total}",
+      "previous": "الصفحة السابقة",
+      "next": "الصفحة التالية"
+    },
+    "empty": {
+      "title": "لا توجد منتجات بعد",
+      "description": "ستظهر المنتجات هنا عند توفر بيانات الدليل.",
+      "refresh": "تحديث المنتجات"
+    },
+    "noResults": {
+      "title": "لا توجد منتجات مطابقة",
+      "description": "جرّب بحثاً مختلفاً أو امسح عوامل التصفية لعرض الدليل كاملاً."
+    },
+    "loading": {
+      "label": "جارٍ تحميل المنتجات",
+      "description": "جارٍ تحميل دليل المنتجات."
+    },
+    "error": {
+      "title": "تعذر تحميل المنتجات",
+      "description": "حدث خطأ أثناء تحميل دليل المنتجات.",
+      "retry": "إعادة المحاولة"
+    }
   },
   "NotFound": {
     "code": "404",

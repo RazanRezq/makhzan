@@ -12,7 +12,7 @@ import {
 
 export const navigationItems = [
   { key: "overview", icon: House, href: "/", group: "workspace" },
-  { key: "products", icon: Package, href: null, group: "workspace" },
+  { key: "products", icon: Package, href: "/products", group: "workspace" },
   { key: "inventory", icon: Layers3, href: null, group: "workspace" },
   { key: "purchases", icon: ClipboardList, href: null, group: "workspace" },
   { key: "sales", icon: ShoppingBag, href: null, group: "workspace" },

@@ -4,8 +4,9 @@ Makhzan is a bilingual (English and Arabic) multi-tenant inventory management
 platform for small and medium businesses in the MENA region.
 
 The current application is a single Next.js App Router workspace at `apps/web`.
-Its dashboard supports English and Arabic. Database access, authentication, and
-product operations are not implemented yet.
+Its dashboard supports English and Arabic and includes a read-only product
+catalog backed by synthetic demo data. Database access, authentication, and
+product mutations are not implemented yet.
 
 ## Run with Docker
 
@@ -82,6 +83,7 @@ host dependencies, and generated output through `.dockerignore`.
 | Setting | Default | Purpose |
 | --- | --- | --- |
 | `WEB_PORT` | `3000` | Host port for the dashboard |
+| `ENABLE_DEMO_PRODUCTS_API` | `false` | Enables the synthetic `GET /api/products` endpoint in production |
 | `DOCKER_WATCH_POLLING` | `1` | Enables 1-second file polling in Docker; use `0` for native events |
 | `POSTGRES_PORT` | `5432` | Host port for optional PostgreSQL |
 | `REDIS_PORT` | `6379` | Host port for optional Redis |
