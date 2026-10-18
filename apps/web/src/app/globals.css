@@ -1,0 +1,104 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --background: #f8faf9;
+  --foreground: #1d2d28;
+  --card: #ffffff;
+  --card-foreground: #1d2d28;
+  --primary: #21634f;
+  --primary-foreground: #ffffff;
+  --secondary: #edf4f0;
+  --secondary-foreground: #245b49;
+  --muted: #f1f4f2;
+  --muted-foreground: #58685f;
+  --accent: #e7f0eb;
+  --accent-foreground: #205440;
+  --border: #dce4df;
+  --input: #dce4df;
+  --ring: #337a60;
+  --sidebar: #ffffff;
+  --hero: #eaf2ed;
+  --overlay: #10251dcc;
+  --radius: 0.75rem;
+  --font-ui: var(--font-latin);
+}
+
+[lang="ar"] {
+  --font-ui: var(--font-arabic);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-sidebar: var(--sidebar);
+  --color-hero: var(--hero);
+  --color-overlay: var(--overlay);
+  --font-sans: var(--font-ui);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    color-scheme: dark;
+    --background: #111a16;
+    --foreground: #eef5f0;
+    --card: #19241e;
+    --card-foreground: #eef5f0;
+    --primary: #9ed6b8;
+    --primary-foreground: #153726;
+    --secondary: #243c2e;
+    --secondary-foreground: #b9e4cc;
+    --muted: #233027;
+    --muted-foreground: #acbdb1;
+    --accent: #294234;
+    --accent-foreground: #c2ead4;
+    --border: #34473a;
+    --input: #34473a;
+    --ring: #9ed6b8;
+    --sidebar: #17211b;
+    --hero: #20372a;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background font-sans text-foreground;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 4px;
+  }
+
+  ::selection {
+    background: var(--accent);
+    color: var(--accent-foreground);
+  }
+}
+
+.text-ltr {
+  direction: ltr;
+  unicode-bidi: embed;
+  text-align: start;
+}

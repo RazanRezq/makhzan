@@ -1,0 +1,32 @@
+# Only the current workspace and root npm manifests are needed by this image.
+**
+!package.json
+!package-lock.json
+!apps/
+!apps/web/
+!apps/web/**
+
+# Never send host dependencies, generated output, or local credentials.
+**/node_modules
+**/.next
+**/out
+**/dist
+**/build
+**/coverage
+**/.git
+**/.agents
+**/.codex
+**/.env
+**/.env.*
+**/.npmrc
+**/.ssh
+**/.aws
+**/secrets
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.log
+**/*.tsbuildinfo
+**/next-env.d.ts
+**/.DS_Store

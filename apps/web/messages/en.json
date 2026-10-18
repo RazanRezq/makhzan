@@ -1,0 +1,72 @@
+{
+  "Brand": {
+    "name": "Makhzan",
+    "tagline": "Everything in its place",
+    "home": "Makhzan overview"
+  },
+  "Metadata": {
+    "title": "Overview | Makhzan",
+    "description": "Your workspace for an organized business."
+  },
+  "Navigation": {
+    "label": "Main navigation",
+    "workspace": "Workspace",
+    "manage": "Management",
+    "overview": "Overview",
+    "products": "Products",
+    "inventory": "Inventory",
+    "purchases": "Purchases",
+    "sales": "Sales",
+    "warehouses": "Warehouses",
+    "suppliers": "Suppliers",
+    "reports": "Reports",
+    "settings": "Settings",
+    "soon": "Soon",
+    "unavailable": "{section} — coming soon",
+    "open": "Open navigation",
+    "close": "Close navigation",
+    "mobileTitle": "Your workspace",
+    "mobileDescription": "Navigate Makhzan. Sections marked Soon are not available yet."
+  },
+  "Shell": {
+    "skip": "Skip to main content",
+    "workspace": "Your workspace",
+    "overview": "Overview",
+    "language": "Change language",
+    "switchLanguage": "العربية",
+    "switchLanguageLabel": "Switch to Arabic",
+    "preview": "Workspace preview",
+    "previewDescription": "Business tools are coming soon.",
+    "footer": "A little more order. A lot more clarity."
+  },
+  "Overview": {
+    "eyebrow": "A fresh start",
+    "title": "Overview",
+    "description": "A little space to see the bigger picture.",
+    "welcome": "Welcome to Makhzan",
+    "heroTitle": "Everything you manage.\nOne place to begin.",
+    "heroDescription": "An organized home for your products, orders, and everyday operations. Your workspace starts here.",
+    "explore": "Explore your workspace",
+    "preview": "Workspace preview",
+    "activityTitle": "Your business at a glance",
+    "activityDescription": "An overview of your activity will live here.",
+    "emptyTitle": "A clean slate, ready for your business",
+    "emptyDescription": "No business data is connected. Products, orders, and inventory activity will appear as these tools become available.",
+    "emptyLabel": "No connected data",
+    "toolsTitle": "Room for every part of your business",
+    "toolsDescription": "These tools are planned for your workspace. They are not available yet.",
+    "comingSoon": "Coming soon",
+    "productsTitle": "A place for your products",
+    "productsDescription": "Keep your catalog organized and make the details easy to find.",
+    "operationsTitle": "Your daily operations",
+    "operationsDescription": "Bring purchasing, sales, and warehouse work into one workspace.",
+    "reportsTitle": "A clearer perspective",
+    "reportsDescription": "Understand your business with reports built around your activity."
+  },
+  "NotFound": {
+    "code": "404",
+    "title": "This page is not here",
+    "description": "The address may have changed, or this section is not available yet.",
+    "back": "Back to overview"
+  }
+}

@@ -1,0 +1,26 @@
+{
+  "name": "makhzan",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Makhzan is a bilingual (English and Arabic) multi-tenant inventory management platform for small and medium businesses in the MENA region.",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=apps/web",
+    "build": "npm run build --workspace=apps/web",
+    "start": "npm run start --workspace=apps/web",
+    "lint": "npm run lint --workspace=apps/web",
+    "typecheck": "npm run typecheck --workspace=apps/web"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/RazanRezq/makhzan.git"
+  },
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/RazanRezq/makhzan/issues"
+  },
+  "homepage": "https://github.com/RazanRezq/makhzan#readme"
+}

@@ -1,5 +1,43 @@
 services:
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: development
+    init: true
+    ports:
+      - "127.0.0.1:${WEB_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: development
+      DOCKER_WATCH_POLLING: "${DOCKER_WATCH_POLLING:-1}"
+    volumes:
+      # Keep Linux dependencies and generated files off the host filesystem.
+      - web_node_modules:/workspace/node_modules
+      - web_next:/workspace/apps/web/.next
+      - web_npm_cache:/home/node/.npm
+      # Bind only editable inputs: no host .env, node_modules, or .next.
+      - ./package.json:/workspace/package.json:ro
+      - ./package-lock.json:/workspace/package-lock.json:ro
+      - ./apps/web/package.json:/workspace/apps/web/package.json:ro
+      - ./apps/web/next.config.ts:/workspace/apps/web/next.config.ts:ro
+      - ./apps/web/tsconfig.json:/workspace/apps/web/tsconfig.json:ro
+      - ./apps/web/eslint.config.mjs:/workspace/apps/web/eslint.config.mjs:ro
+      - ./apps/web/src:/workspace/apps/web/src:ro
+      - ./apps/web/messages:/workspace/apps/web/messages:ro
+      - ./apps/web/public:/workspace/apps/web/public:ro
+    healthcheck:
+      test:
+        - CMD
+        - node
+        - -e
+        - "fetch('http://127.0.0.1:3000/en').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+      interval: 10s
+      timeout: 10s
+      retries: 12
+      start_period: 60s
+
   postgres:
+    profiles: ["database"]
     image: postgres:16
     environment:
       POSTGRES_DB: makhzan
@@ -17,6 +55,7 @@ services:
       start_period: 10s
 
   redis:
+    profiles: ["cache"]
     image: redis:7-alpine
     ports:
       - "127.0.0.1:${REDIS_PORT:-6379}:6379"
@@ -27,4 +66,7 @@ services:
       retries: 10
 
 volumes:
+  web_node_modules:
+  web_next:
+  web_npm_cache:
   postgres_data:
