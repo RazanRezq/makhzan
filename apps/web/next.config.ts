@@ -4,6 +4,12 @@ import createNextIntlPlugin from "next-intl/plugin";
 const withNextIntl = createNextIntlPlugin();
 
 const nextConfig: NextConfig = {
+  // HTTP integration tests build into an isolated directory so they never
+  // contend with the development server's .next output.
+  distDir: process.env.NEXT_DIST_DIR ?? ".next",
+  typescript: {
+    tsconfigPath: process.env.NEXT_TSCONFIG ?? "tsconfig.json",
+  },
   // Support the loopback IP as well as localhost during development.
   allowedDevOrigins: ["127.0.0.1"],
   cacheComponents: true,

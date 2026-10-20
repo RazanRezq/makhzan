@@ -22,7 +22,11 @@ services:
       - ./apps/web/next.config.ts:/workspace/apps/web/next.config.ts:ro
       - ./apps/web/tsconfig.json:/workspace/apps/web/tsconfig.json:ro
       - ./apps/web/eslint.config.mjs:/workspace/apps/web/eslint.config.mjs:ro
+      - ./apps/web/vitest.unit.config.mts:/workspace/apps/web/vitest.unit.config.mts:ro
+      - ./apps/web/vitest.http.config.mts:/workspace/apps/web/vitest.http.config.mts:ro
       - ./apps/web/src:/workspace/apps/web/src:ro
+      - ./apps/web/tests:/workspace/apps/web/tests:ro
+      - ./apps/web/scripts:/workspace/apps/web/scripts:ro
       - ./apps/web/messages:/workspace/apps/web/messages:ro
       - ./apps/web/public:/workspace/apps/web/public:ro
     healthcheck:

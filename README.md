@@ -8,11 +8,24 @@ Its dashboard supports English and Arabic and includes a read-only product
 catalog backed by synthetic demo data. Database access, authentication, and
 product mutations are not implemented yet.
 
+## Prerequisites and first checkout
+
+- Git.
+- Docker Desktop with Linux containers on Windows/macOS, or Docker Engine with
+  the Compose v2 plugin on Linux.
+- Node.js is optional for the Docker-first workflow. Native commands require the
+  exact version in `.nvmrc`; use npm only.
+
+```sh
+git clone https://github.com/RazanRezq/makhzan.git
+cd makhzan
+docker compose up --build -d --wait web
+```
+
 ## Run with Docker
 
-Use Docker Desktop with Linux containers on macOS or Windows, or Docker Engine
-with the Compose v2 plugin on Linux. Start/resume Docker before running commands.
-Run everything below from the repository root.
+Start or resume Docker before running commands. Run everything below from the
+repository root.
 
 ```sh
 docker compose up --build -d --wait web
@@ -67,6 +80,25 @@ Rebuild after adding configuration files outside the mounted paths. If a new
 workspace is introduced later, update the Dockerfile's manifest copies and
 Compose mounts to include it.
 
+## Development commands
+
+The Docker development service runs `npm run dev` with Fast Refresh. For an
+optional native workflow, first run `npm ci` at the repository root, then use:
+
+```sh
+npm run dev
+npm run typecheck
+npm run lint
+npm run test:unit
+npm run test:http
+npm run test:watch
+npm run benchmark:products
+npm run build
+```
+
+Do not install dependencies from `apps/web`; npm Workspaces and the root
+`package-lock.json` are authoritative.
+
 ## Environment files
 
 The dashboard starts without an `.env` file. To customize host ports, copy
@@ -89,6 +121,15 @@ host dependencies, and generated output through `.dockerignore`.
 | `REDIS_PORT` | `6379` | Host port for optional Redis |
 
 Keep `.env` untracked. Document new environment settings in `.env.example`.
+
+## Switching development computers
+
+Commit source and the root lockfile, clone the repository on the other computer,
+and recreate any untracked `.env` manually from `.env.example`. Then run
+`docker compose up --build -d --wait web`. Docker volumes, local database data,
+and secrets are machine-local and must not be copied through Git. If manifests
+changed, always rebuild the web image so `npm ci` refreshes the dependency
+volume from the lockfile.
 
 ## Optional PostgreSQL and Redis
 
@@ -116,12 +157,51 @@ Stop the development server before running checks against its shared build volum
 
 ```sh
 docker compose stop web
-docker compose run --rm --no-deps web sh -c "npm run typecheck && npm run lint && npm run build"
+docker compose run --rm --no-deps web sh -c "npm run typecheck && npm run lint && npm run test:unit && npm run test:http"
+docker compose run --rm --no-deps -e NODE_ENV=production web npm run build
 docker compose up -d --wait web
 ```
 
-There is no unit-test suite configured yet. Existing development-tool audit
-findings must be reviewed separately; do not use `npm audit fix --force`.
+The HTTP suite creates an isolated production build, starts real Next.js servers
+on available loopback ports, and removes its generated files after the run. It
+does not depend on the development container being active. Run the repeatable
+Products benchmark separately with:
+
+```sh
+docker compose run --rm --no-deps web npm run benchmark:products
+```
+
+`npm test` runs the Unit/Component suite followed by the HTTP suite. Individual
+commands are `npm run test:unit`, `npm run test:http`, and `npm run test:watch`.
+Missing test files fail rather than being silently skipped. Existing
+development-tool audit findings must be reviewed separately; do not use
+`npm audit fix --force`.
+
+## Continuous integration
+
+GitHub Actions runs `npm ci`, typecheck, ESLint, the 20 Unit/Component tests, a
+production build, and the 5 real HTTP Integration tests for every push and pull
+request. It uses the Node.js version in `.nvmrc` and caches npm downloads using
+the root lockfile; it does not cache `node_modules` or deploy the application.
+See `.github/workflows/ci.yml`. A committed workflow must complete on a
+GitHub-hosted runner before its status can be called passing.
+
+## Dependency security
+
+As of 20 October 2026, `npm audit --omit=dev` reports zero production
+vulnerabilities. The full audit reports five high-severity development-only
+findings in `eslint-config-next`, `@next/eslint-plugin-next`, `braces`,
+`fast-glob`, and `micromatch`. The available remediation is a breaking
+framework-tooling downgrade, so it has not been applied. Do not use
+`npm audit fix --force`; reassess when compatible upstream releases are
+available.
+
+## Deployment readiness
+
+Heroku is the provisional portfolio-demo target. No deployment or paid resource
+has been created. Runtime requirements, current student-credit constraints, and
+the future deployment checklist are documented in
+[`docs/deployment/heroku.md`](docs/deployment/heroku.md).
 
 For native development, install the version in `.nvmrc` using your Node version
 manager, then run:
@@ -131,8 +211,10 @@ npm ci
 npm run dev
 ```
 
-Native verification commands are `npm run typecheck`, `npm run lint`, and
-`npm run build`. Read [AGENTS.md](AGENTS.md) before changing code.
+Native verification commands mirror the Docker commands: `npm run typecheck`,
+`npm run lint`, `npm run test:unit`, `npm run test:http`, and `npm run build`.
+Docker remains the required completion environment. Read [AGENTS.md](AGENTS.md)
+before changing code.
 
 ## Troubleshooting
 
