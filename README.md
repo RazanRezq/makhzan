@@ -117,7 +117,11 @@ host dependencies, and generated output through `.dockerignore`.
 | `WEB_PORT` | `3000` | Host port for the dashboard |
 | `ENABLE_DEMO_PRODUCTS_API` | `false` | Enables the synthetic `GET /api/products` endpoint in production |
 | `DOCKER_WATCH_POLLING` | `1` | Enables 1-second file polling in Docker; use `0` for native events |
-| `POSTGRES_PORT` | `5432` | Host port for optional PostgreSQL |
+| `POSTGRES_PORT` | `5432` | Loopback host port for development PostgreSQL |
+| `POSTGRES_DB` | `makhzan` | Local development database name |
+| `POSTGRES_USER` | `makhzan` | Local development database user |
+| `POSTGRES_PASSWORD` | `makhzan` | Local-only example password; replace outside disposable development |
+| `DATABASE_URL` | See `.env.example` | Native-tool connection URL; Compose injects its service-network URL separately |
 | `REDIS_PORT` | `6379` | Host port for optional Redis |
 
 Keep `.env` untracked. Document new environment settings in `.env.example`.
@@ -131,22 +135,51 @@ and secrets are machine-local and must not be copied through Git. If manifests
 changed, always rebuild the web image so `npm ci` refreshes the dependency
 volume from the lockfile.
 
-## Optional PostgreSQL and Redis
+## PostgreSQL and migrations
 
-The existing service configurations and PostgreSQL data volume are preserved.
-They are not required by the current dashboard and do not start by default.
+PostgreSQL remains optional for the mock-backed dashboard but is required for
+database migrations and integration tests. Development data stays in the
+existing `postgres_data` volume.
 
 ```sh
 docker compose --profile database up -d --wait postgres
+docker compose run --rm --no-deps web npm run db:migrate
+docker compose run --rm --no-deps web npm run db:check
+```
+
+After an approved Drizzle schema change, generate and review a migration before
+applying it:
+
+```sh
+docker compose run --rm --no-deps web npm run db:generate
+docker compose run --rm --no-deps web npm run db:check
+docker compose run --rm --no-deps web npm run db:migrate
+```
+
+Do not use `drizzle-kit push` against shared or production databases. The web
+container uses `postgres:5432`; the host URL in `.env.example` uses
+`127.0.0.1:${POSTGRES_PORT}`.
+
+Run the isolated real-PostgreSQL suite with:
+
+```sh
+docker compose --profile database-test up -d --wait postgres-test
+docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:db
+docker compose --profile database-test rm -sf postgres-test
+```
+
+The test service has no host port or persistent volume and the suite refuses to
+reset a database other than the explicitly named local `makhzan_test` database.
+Redis remains deferred and optional:
+
+```sh
 docker compose --profile cache up -d --wait redis
 docker compose --profile database --profile cache up -d --wait
 docker compose --profile database --profile cache down
 ```
 
-Both services expose ports only on `127.0.0.1`. Their example credentials are for
-local development. The connection URLs in `.env.example` are for host processes;
-a future containerized database client must use service names `postgres:5432`
-and `redis:6379`, rather than localhost.
+Development PostgreSQL and Redis expose ports only on `127.0.0.1`. Their example
+credentials are local-only and must not be reused for deployed environments.
 
 **Do not use `docker compose down --volumes` to troubleshoot the web app:** it can
 delete PostgreSQL data as well as web caches.
@@ -157,8 +190,11 @@ Stop the development server before running checks against its shared build volum
 
 ```sh
 docker compose stop web
+docker compose --profile database-test up -d --wait postgres-test
 docker compose run --rm --no-deps web sh -c "npm run typecheck && npm run lint && npm run test:unit && npm run test:http"
+docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:db
 docker compose run --rm --no-deps -e NODE_ENV=production web npm run build
+docker compose --profile database-test rm -sf postgres-test
 docker compose up -d --wait web
 ```
 
@@ -171,29 +207,32 @@ Products benchmark separately with:
 docker compose run --rm --no-deps web npm run benchmark:products
 ```
 
-`npm test` runs the Unit/Component suite followed by the HTTP suite. Individual
-commands are `npm run test:unit`, `npm run test:http`, and `npm run test:watch`.
+`npm test` runs the Unit/Component suite followed by the HTTP suite. The guarded
+database suite is separate because it requires PostgreSQL. Individual commands
+are `npm run test:unit`, `npm run test:http`, `npm run test:db`, and
+`npm run test:watch`.
 Missing test files fail rather than being silently skipped. Existing
 development-tool audit findings must be reviewed separately; do not use
 `npm audit fix --force`.
 
 ## Continuous integration
 
-GitHub Actions runs `npm ci`, typecheck, ESLint, the 20 Unit/Component tests, a
-production build, and the 5 real HTTP Integration tests for every push and pull
-request. It uses the Node.js version in `.nvmrc` and caches npm downloads using
-the root lockfile; it does not cache `node_modules` or deploy the application.
+GitHub Actions runs `npm ci`, typecheck, ESLint, the 20 Unit/Component tests, 13
+real PostgreSQL integration tests, a production build, and the 5 real HTTP
+Integration tests for every push and pull request. PostgreSQL is an isolated CI
+service with synthetic credentials. The workflow uses the Node.js version in
+`.nvmrc` and caches npm downloads using the root lockfile; it does not cache
+`node_modules` or deploy the application.
 See `.github/workflows/ci.yml`. A committed workflow must complete on a
 GitHub-hosted runner before its status can be called passing.
 
 ## Dependency security
 
-As of 20 October 2026, `npm audit --omit=dev` reports zero production
-vulnerabilities. The full audit reports five high-severity development-only
-findings in `eslint-config-next`, `@next/eslint-plugin-next`, `braces`,
-`fast-glob`, and `micromatch`. The available remediation is a breaking
-framework-tooling downgrade, so it has not been applied. Do not use
-`npm audit fix --force`; reassess when compatible upstream releases are
+As of 23 October 2026, `npm audit --omit=dev` reports zero production
+vulnerabilities. The full audit reports four moderate development-only findings
+in Drizzle Kit's legacy esbuild loader chain. The offered remediation is a
+breaking downgrade, so it has not been applied. Do not use
+`npm audit fix --force`; reassess when a compatible upstream release is
 available.
 
 ## Deployment readiness

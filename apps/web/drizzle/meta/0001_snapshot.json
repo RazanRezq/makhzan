@@ -1,0 +1,422 @@
+{
+  "id": "24c2d751-2c32-4e41-911c-bfc734a6afa2",
+  "prevId": "a5d862ea-bd8f-4eb7-beb6-cd3e58a472ea",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.products": {
+      "name": "products",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sku": {
+          "name": "sku",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(200)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "category_code": {
+          "name": "category_code",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "unit_code": {
+          "name": "unit_code",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ACTIVE'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "products_tenant_created_at_idx": {
+          "name": "products_tenant_created_at_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "products_tenant_id_tenants_id_fk": {
+          "name": "products_tenant_id_tenants_id_fk",
+          "tableFrom": "products",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "restrict",
+          "onDelete": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "products_tenant_sku_unique": {
+          "name": "products_tenant_sku_unique",
+          "columns": [
+            "tenant_id",
+            "sku"
+          ],
+          "nullsNotDistinct": false
+        },
+        "products_tenant_id_unique": {
+          "name": "products_tenant_id_unique",
+          "columns": [
+            "tenant_id",
+            "id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "products_sku_length_check": {
+          "name": "products_sku_length_check",
+          "value": "char_length(\"products\".\"sku\") between 1 and 64"
+        },
+        "products_sku_canonical_check": {
+          "name": "products_sku_canonical_check",
+          "value": "octet_length(\"products\".\"sku\") = char_length(\"products\".\"sku\")\n        and \"products\".\"sku\" = upper(\"products\".\"sku\")\n        and \"products\".\"sku\" = btrim(\"products\".\"sku\")\n        and \"products\".\"sku\" !~ '[[:cntrl:]]'\n        and \"products\".\"sku\" !~ '  '"
+        },
+        "products_name_canonical_check": {
+          "name": "products_name_canonical_check",
+          "value": "\"products\".\"name\" = btrim(\"products\".\"name\") and char_length(\"products\".\"name\") > 0"
+        },
+        "products_category_code_check": {
+          "name": "products_category_code_check",
+          "value": "\"products\".\"category_code\" ~ '^[A-Z0-9][A-Z0-9._/-]*$'"
+        },
+        "products_unit_code_check": {
+          "name": "products_unit_code_check",
+          "value": "\"products\".\"unit_code\" ~ '^[A-Z0-9][A-Z0-9._/-]*$'"
+        },
+        "products_status_check": {
+          "name": "products_status_check",
+          "value": "\"products\".\"status\" in ('ACTIVE', 'INACTIVE')"
+        },
+        "products_timestamps_check": {
+          "name": "products_timestamps_check",
+          "value": "\"products\".\"updated_at\" >= \"products\".\"created_at\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.tenants": {
+      "name": "tenants",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(160)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ACTIVE'"
+        },
+        "base_currency": {
+          "name": "base_currency",
+          "type": "varchar(3)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "timezone": {
+          "name": "timezone",
+          "type": "varchar(64)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'Asia/Dubai'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "tenants_status_created_at_idx": {
+          "name": "tenants_status_created_at_idx",
+          "columns": [
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "created_at",
+              "isExpression": false,
+              "asc": false,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "tenants_name_canonical_check": {
+          "name": "tenants_name_canonical_check",
+          "value": "\"tenants\".\"name\" = btrim(\"tenants\".\"name\") and char_length(\"tenants\".\"name\") > 0"
+        },
+        "tenants_status_check": {
+          "name": "tenants_status_check",
+          "value": "\"tenants\".\"status\" in ('ACTIVE', 'INACTIVE')"
+        },
+        "tenants_base_currency_check": {
+          "name": "tenants_base_currency_check",
+          "value": "\"tenants\".\"base_currency\" ~ '^[A-Z]{3}$'"
+        },
+        "tenants_timezone_canonical_check": {
+          "name": "tenants_timezone_canonical_check",
+          "value": "\"tenants\".\"timezone\" = btrim(\"tenants\".\"timezone\") and char_length(\"tenants\".\"timezone\") > 0"
+        },
+        "tenants_timestamps_check": {
+          "name": "tenants_timestamps_check",
+          "value": "\"tenants\".\"updated_at\" >= \"tenants\".\"created_at\""
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.warehouses": {
+      "name": "warehouses",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "tenant_id": {
+          "name": "tenant_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "code": {
+          "name": "code",
+          "type": "varchar(32)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar(160)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(16)",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'ACTIVE'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp (3) with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "warehouses_tenant_name_idx": {
+          "name": "warehouses_tenant_name_idx",
+          "columns": [
+            {
+              "expression": "tenant_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "name",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "with": {},
+          "method": "btree",
+          "concurrently": false
+        }
+      },
+      "foreignKeys": {
+        "warehouses_tenant_id_tenants_id_fk": {
+          "name": "warehouses_tenant_id_tenants_id_fk",
+          "tableFrom": "warehouses",
+          "columnsFrom": [
+            "tenant_id"
+          ],
+          "tableTo": "tenants",
+          "columnsTo": [
+            "id"
+          ],
+          "onUpdate": "restrict",
+          "onDelete": "restrict"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {
+        "warehouses_tenant_code_unique": {
+          "name": "warehouses_tenant_code_unique",
+          "columns": [
+            "tenant_id",
+            "code"
+          ],
+          "nullsNotDistinct": false
+        },
+        "warehouses_tenant_id_unique": {
+          "name": "warehouses_tenant_id_unique",
+          "columns": [
+            "tenant_id",
+            "id"
+          ],
+          "nullsNotDistinct": false
+        }
+      },
+      "policies": {},
+      "checkConstraints": {
+        "warehouses_code_check": {
+          "name": "warehouses_code_check",
+          "value": "\"warehouses\".\"code\" ~ '^[A-Z0-9][A-Z0-9._/-]*$'"
+        },
+        "warehouses_name_canonical_check": {
+          "name": "warehouses_name_canonical_check",
+          "value": "\"warehouses\".\"name\" = btrim(\"warehouses\".\"name\") and char_length(\"warehouses\".\"name\") > 0"
+        },
+        "warehouses_status_check": {
+          "name": "warehouses_status_check",
+          "value": "\"warehouses\".\"status\" in ('ACTIVE', 'INACTIVE')"
+        },
+        "warehouses_timestamps_check": {
+          "name": "warehouses_timestamps_check",
+          "value": "\"warehouses\".\"updated_at\" >= \"warehouses\".\"created_at\""
+        }
+      },
+      "isRLSEnabled": false
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "views": {},
+  "sequences": {},
+  "roles": {},
+  "policies": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

@@ -7,7 +7,7 @@ export const PRODUCT_CATEGORIES = [
   "PERSONAL_CARE",
 ] as const;
 
-export const PRODUCT_STATUSES = ["ACTIVE", "INACTIVE"] as const;
+export const PRODUCT_STATUSES = RESOURCE_STATUSES;
 
 export const PRODUCT_UNITS = [
   "PIECE",
@@ -49,3 +49,4 @@ export type ProductsApiError = {
 };
 
 export type ProductsApiResponse = ProductsApiSuccess | ProductsApiError;
+import { RESOURCE_STATUSES } from "@/lib/database/constants";

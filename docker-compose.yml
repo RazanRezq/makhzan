@@ -10,6 +10,7 @@ services:
     environment:
       NODE_ENV: development
       DOCKER_WATCH_POLLING: "${DOCKER_WATCH_POLLING:-1}"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-makhzan}:${POSTGRES_PASSWORD:-makhzan}@postgres:5432/${POSTGRES_DB:-makhzan}"
     volumes:
       # Keep Linux dependencies and generated files off the host filesystem.
       - web_node_modules:/workspace/node_modules
@@ -24,6 +25,10 @@ services:
       - ./apps/web/eslint.config.mjs:/workspace/apps/web/eslint.config.mjs:ro
       - ./apps/web/vitest.unit.config.mts:/workspace/apps/web/vitest.unit.config.mts:ro
       - ./apps/web/vitest.http.config.mts:/workspace/apps/web/vitest.http.config.mts:ro
+      - ./apps/web/vitest.db.config.mts:/workspace/apps/web/vitest.db.config.mts:ro
+      - ./apps/web/drizzle.config.ts:/workspace/apps/web/drizzle.config.ts:ro
+      # Drizzle Kit is the only tool expected to write generated migrations.
+      - ./apps/web/drizzle:/workspace/apps/web/drizzle
       - ./apps/web/src:/workspace/apps/web/src:ro
       - ./apps/web/tests:/workspace/apps/web/tests:ro
       - ./apps/web/scripts:/workspace/apps/web/scripts:ro
@@ -44,19 +49,35 @@ services:
     profiles: ["database"]
     image: postgres:16
     environment:
-      POSTGRES_DB: makhzan
-      POSTGRES_USER: makhzan
-      POSTGRES_PASSWORD: makhzan
+      POSTGRES_DB: "${POSTGRES_DB:-makhzan}"
+      POSTGRES_USER: "${POSTGRES_USER:-makhzan}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-makhzan}"
     ports:
       - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U makhzan -d makhzan"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-makhzan} -d ${POSTGRES_DB:-makhzan}"]
       interval: 5s
       timeout: 5s
       retries: 10
       start_period: 10s
+
+  postgres-test:
+    profiles: ["database-test"]
+    image: postgres:16
+    environment:
+      POSTGRES_DB: makhzan_test
+      POSTGRES_USER: makhzan_test
+      POSTGRES_PASSWORD: makhzan_test
+    tmpfs:
+      - /var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U makhzan_test -d makhzan_test"]
+      interval: 2s
+      timeout: 5s
+      retries: 15
+      start_period: 5s
 
   redis:
     profiles: ["cache"]
