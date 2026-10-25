@@ -1,11 +1,22 @@
+import { redirect } from "next/navigation";
 import { getTranslations } from "next-intl/server";
 import { Header } from "@/components/dashboard/header";
 import { Sidebar } from "@/components/dashboard/sidebar";
+import { getServerSession } from "@/server/auth/session";
+
+export const instant = false;
 
 export default async function DashboardLayout({
   children,
+  params,
 }: LayoutProps<"/[locale]">) {
-  const t = await getTranslations("Shell");
+  const { locale } = await params;
+  const [session, t] = await Promise.all([
+    getServerSession(),
+    getTranslations("Shell"),
+  ]);
+  if (!session) redirect(`/${locale}/sign-in`);
+
   return (
     <div className="min-h-dvh">
       <a
@@ -16,7 +27,7 @@ export default async function DashboardLayout({
       </a>
       <Sidebar />
       <div className="flex min-h-dvh min-w-0 flex-col lg:ps-64">
-        <Header />
+        <Header userName={session.user.name} />
         <main id="main-content" tabIndex={-1} className="mx-auto min-w-0 w-full max-w-7xl flex-1 px-4 py-8 sm:px-8 lg:py-10">
           {children}
         </main>

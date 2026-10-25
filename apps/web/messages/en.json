@@ -158,6 +158,58 @@
       "retry": "Try again"
     }
   },
+  "Auth": {
+    "signIn": {
+      "metadataTitle": "Sign in | Makhzan",
+      "title": "Welcome back",
+      "description": "Sign in to continue to your Makhzan workspace."
+    },
+    "signUp": {
+      "metadataTitle": "Create account | Makhzan",
+      "title": "Create your account",
+      "description": "Set up your identity. Company onboarding will follow in a later step."
+    },
+    "fields": {
+      "name": "Full name",
+      "email": "Email address",
+      "password": "Password",
+      "confirmPassword": "Confirm password"
+    },
+    "validation": {
+      "name": "Enter a name between {min} and {max} characters.",
+      "email": "Enter a valid email address.",
+      "password": "Use between {min} and {max} characters.",
+      "passwordRequired": "Enter your password.",
+      "passwordMatch": "The passwords must match."
+    },
+    "errors": {
+      "credentials": "The email or password is incorrect.",
+      "registration": "We could not create this account. Try signing in or use a different email address.",
+      "rateLimited": "Too many attempts. Wait a moment and try again.",
+      "unavailable": "Authentication is temporarily unavailable. Try again."
+    },
+    "actions": {
+      "signIn": "Sign in",
+      "signUp": "Create account",
+      "submitting": "Please wait…",
+      "signOut": "Sign out",
+      "signingOut": "Signing out…"
+    },
+    "links": {
+      "needAccount": "New to Makhzan?",
+      "haveAccount": "Already have an account?",
+      "signIn": "Sign in",
+      "signUp": "Create one"
+    },
+    "registrationUnavailable": "Public registration is not available yet. Email verification and production abuse protections must be configured before it can open.",
+    "pending": {
+      "metadataTitle": "Company setup pending | Makhzan",
+      "title": "Your identity is ready",
+      "description": "Company onboarding is not available yet.",
+      "accessPolicy": "You can view the authenticated demo workspace and its synthetic catalog. This account has no tenant membership or access to real business data.",
+      "viewDemo": "View demo workspace"
+    }
+  },
   "NotFound": {
     "code": "404",
     "title": "This page is not here",

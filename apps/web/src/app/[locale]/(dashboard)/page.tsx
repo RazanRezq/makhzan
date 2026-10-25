@@ -16,8 +16,13 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import { requireServerSession } from "@/server/auth/session";
 
-export default async function OverviewPage() {
+export default async function OverviewPage({
+  params,
+}: PageProps<"/[locale]">) {
+  const { locale } = await params;
+  await requireServerSession(locale);
   const t = await getTranslations("Overview");
   const tools = [
     {

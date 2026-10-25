@@ -3,6 +3,7 @@ import type {
   ProductsApiError,
   ProductsApiSuccess,
 } from "@/lib/products/product.types";
+import { auth } from "@/server/auth/auth";
 import { listProducts } from "@/server/products/product.service";
 
 function isDemoApiEnabled() {
@@ -12,8 +13,22 @@ function isDemoApiEnabled() {
   );
 }
 
-export async function GET(): Promise<Response> {
+export async function GET(request: Request): Promise<Response> {
   await connection();
+
+  const session = await auth.api.getSession({ headers: request.headers });
+  if (!session) {
+    const response: ProductsApiError = {
+      error: {
+        code: "UNAUTHENTICATED",
+        message: "Authentication is required.",
+      },
+    };
+    return Response.json(response, {
+      status: 401,
+      headers: { "Cache-Control": "no-store" },
+    });
+  }
 
   if (!isDemoApiEnabled()) {
     const response: ProductsApiError = {

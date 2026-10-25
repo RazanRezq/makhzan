@@ -5,7 +5,8 @@ platform for small and medium businesses in the MENA region.
 
 The current application is a single Next.js App Router workspace at `apps/web`.
 Its dashboard supports English and Arabic and includes a read-only product
-catalog backed by synthetic demo data. Database access, authentication, and
+catalog backed by synthetic demo data. Better Auth provides email/password
+identity and database-backed sessions; tenant membership, RBAC, onboarding, and
 product mutations are not implemented yet.
 
 ## Prerequisites and first checkout
@@ -19,7 +20,10 @@ product mutations are not implemented yet.
 ```sh
 git clone https://github.com/RazanRezq/makhzan.git
 cd makhzan
-docker compose up --build -d --wait web
+docker compose build web
+docker compose up -d --wait postgres
+docker compose run --rm --no-deps web npm run db:migrate
+docker compose up -d --wait web
 ```
 
 ## Run with Docker
@@ -28,7 +32,7 @@ Start or resume Docker before running commands. Run everything below from the
 repository root.
 
 ```sh
-docker compose up --build -d --wait web
+docker compose up --build -d --wait
 ```
 
 Open **http://localhost:3000**, which redirects to `/en`. Arabic is available at
@@ -40,6 +44,7 @@ The image pins **Node.js 24.22.0 LTS** on Debian Bookworm, matching `.nvmrc`.
 It supports both ARM64 and AMD64 without forcing architecture emulation.
 You do not need Node.js or a host `node_modules` installation to use Docker.
 Initial builds require internet access for npm packages and Next.js font downloads.
+PostgreSQL is required for authentication and starts with the web service.
 
 ```sh
 docker compose ps
@@ -91,6 +96,7 @@ npm run typecheck
 npm run lint
 npm run test:unit
 npm run test:http
+npm run test:auth
 npm run test:watch
 npm run benchmark:products
 npm run build
@@ -101,7 +107,7 @@ Do not install dependencies from `apps/web`; npm Workspaces and the root
 
 ## Environment files
 
-The dashboard starts without an `.env` file. To customize host ports, copy
+Docker development starts with local-only defaults. To customize settings, copy
 `.env.example` to `.env` once using your editor or file manager. On macOS/Linux
 use `cp .env.example .env`; in PowerShell use `Copy-Item .env.example .env`.
 Preserve any existing local settings.
@@ -117,6 +123,9 @@ host dependencies, and generated output through `.dockerignore`.
 | `WEB_PORT` | `3000` | Host port for the dashboard |
 | `ENABLE_DEMO_PRODUCTS_API` | `false` | Enables the synthetic `GET /api/products` endpoint in production |
 | `DOCKER_WATCH_POLLING` | `1` | Enables 1-second file polling in Docker; use `0` for native events |
+| `BETTER_AUTH_SECRET` | Development fallback | Cookie-signing secret; use a unique random value of at least 32 characters outside local development |
+| `BETTER_AUTH_URL` | `http://localhost:3000` | Public origin used by Better Auth; HTTPS is required in production |
+| `AUTH_TRUSTED_ORIGINS` | Localhost origins | Exact comma-separated browser origins allowed for auth requests |
 | `POSTGRES_PORT` | `5432` | Loopback host port for development PostgreSQL |
 | `POSTGRES_DB` | `makhzan` | Local development database name |
 | `POSTGRES_USER` | `makhzan` | Local development database user |
@@ -130,19 +139,18 @@ Keep `.env` untracked. Document new environment settings in `.env.example`.
 
 Commit source and the root lockfile, clone the repository on the other computer,
 and recreate any untracked `.env` manually from `.env.example`. Then run
-`docker compose up --build -d --wait web`. Docker volumes, local database data,
-and secrets are machine-local and must not be copied through Git. If manifests
+the first-checkout sequence above. Docker volumes, local database data, and
+secrets are machine-local and must not be copied through Git. If manifests
 changed, always rebuild the web image so `npm ci` refreshes the dependency
 volume from the lockfile.
 
 ## PostgreSQL and migrations
 
-PostgreSQL remains optional for the mock-backed dashboard but is required for
-database migrations and integration tests. Development data stays in the
-existing `postgres_data` volume.
+PostgreSQL is required for authentication, migrations, and integration tests.
+Development data stays in the existing `postgres_data` volume.
 
 ```sh
-docker compose --profile database up -d --wait postgres
+docker compose up -d --wait postgres
 docker compose run --rm --no-deps web npm run db:migrate
 docker compose run --rm --no-deps web npm run db:check
 ```
@@ -165,6 +173,7 @@ Run the isolated real-PostgreSQL suite with:
 ```sh
 docker compose --profile database-test up -d --wait postgres-test
 docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:db
+docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:auth
 docker compose --profile database-test rm -sf postgres-test
 ```
 
@@ -174,8 +183,8 @@ Redis remains deferred and optional:
 
 ```sh
 docker compose --profile cache up -d --wait redis
-docker compose --profile database --profile cache up -d --wait
-docker compose --profile database --profile cache down
+docker compose --profile cache up -d --wait
+docker compose --profile cache down
 ```
 
 Development PostgreSQL and Redis expose ports only on `127.0.0.1`. Their example
@@ -191,9 +200,11 @@ Stop the development server before running checks against its shared build volum
 ```sh
 docker compose stop web
 docker compose --profile database-test up -d --wait postgres-test
-docker compose run --rm --no-deps web sh -c "npm run typecheck && npm run lint && npm run test:unit && npm run test:http"
+docker compose run --rm --no-deps web sh -c "npm run typecheck && npm run lint && npm run test:unit"
 docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:db
-docker compose run --rm --no-deps -e NODE_ENV=production web npm run build
+docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:auth
+docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:http
+docker compose run --rm --no-deps -e NODE_ENV=production -e BETTER_AUTH_SECRET=synthetic-build-secret-at-least-32-characters -e BETTER_AUTH_URL=https://build.invalid -e AUTH_TRUSTED_ORIGINS=https://build.invalid web npm run build
 docker compose --profile database-test rm -sf postgres-test
 docker compose up -d --wait web
 ```
@@ -208,8 +219,9 @@ docker compose run --rm --no-deps web npm run benchmark:products
 ```
 
 `npm test` runs the Unit/Component suite followed by the HTTP suite. The guarded
-database suite is separate because it requires PostgreSQL. Individual commands
-are `npm run test:unit`, `npm run test:http`, `npm run test:db`, and
+database and authentication suites are separate because they require PostgreSQL.
+Individual commands are `npm run test:unit`, `npm run test:http`,
+`npm run test:db`, `npm run test:auth`, and
 `npm run test:watch`.
 Missing test files fail rather than being silently skipped. Existing
 development-tool audit findings must be reviewed separately; do not use
@@ -217,10 +229,10 @@ development-tool audit findings must be reviewed separately; do not use
 
 ## Continuous integration
 
-GitHub Actions runs `npm ci`, typecheck, ESLint, the 20 Unit/Component tests, 13
-real PostgreSQL integration tests, a production build, and the 5 real HTTP
-Integration tests for every push and pull request. PostgreSQL is an isolated CI
-service with synthetic credentials. The workflow uses the Node.js version in
+GitHub Actions runs `npm ci`, typecheck, ESLint, 22 Unit/Component tests, 13
+database tests, 9 authentication integration tests, a production build, and 12
+real HTTP integration tests for every push and pull request. PostgreSQL is an
+isolated CI service with synthetic credentials. The workflow uses the Node.js version in
 `.nvmrc` and caches npm downloads using the root lockfile; it does not cache
 `node_modules` or deploy the application.
 See `.github/workflows/ci.yml`. A committed workflow must complete on a
@@ -228,12 +240,13 @@ GitHub-hosted runner before its status can be called passing.
 
 ## Dependency security
 
-As of 23 October 2026, `npm audit --omit=dev` reports zero production
-vulnerabilities. The full audit reports four moderate development-only findings
-in Drizzle Kit's legacy esbuild loader chain. The offered remediation is a
-breaking downgrade, so it has not been applied. Do not use
-`npm audit fix --force`; reassess when a compatible upstream release is
-available.
+As of 24 October 2026, the full audit and `npm audit --omit=dev` each report four
+moderate findings in Drizzle Kit's legacy esbuild loader chain. Better Auth
+declares Drizzle Kit as an optional peer, so npm includes that development tool
+in the `--omit=dev` graph; `npm audit --omit=dev --omit=optional` reports zero
+runtime findings. The offered remediation is a breaking Drizzle Kit downgrade,
+so it has not been applied. Do not use `npm audit fix --force`; reassess when a
+compatible upstream release is available.
 
 ## Deployment readiness
 
@@ -254,6 +267,20 @@ Native verification commands mirror the Docker commands: `npm run typecheck`,
 `npm run lint`, `npm run test:unit`, `npm run test:http`, and `npm run build`.
 Docker remains the required completion environment. Read [AGENTS.md](AGENTS.md)
 before changing code.
+
+## Authentication scope
+
+Development and isolated tests support email/password registration, sign-in,
+database-backed sessions, and logout. Public production registration is
+hard-disabled until a real email provider, email verification, password
+recovery, and production abuse controls are configured. Sign-in remains
+available for pre-provisioned accounts.
+
+Authenticated users can access only the identity-level shell and synthetic demo
+catalog. Authentication does not grant tenant membership or permission to real
+business data. New development accounts land on `/[locale]/pending-setup` until
+company onboarding is implemented. See
+[`docs/architecture/authentication.md`](docs/architecture/authentication.md).
 
 ## Troubleshooting
 

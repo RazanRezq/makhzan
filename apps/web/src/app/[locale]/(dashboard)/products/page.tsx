@@ -4,6 +4,7 @@ import { hasLocale } from "next-intl";
 import { getTranslations } from "next-intl/server";
 import { ProductsTable } from "@/features/products/components/products-table";
 import { routing } from "@/i18n/routing";
+import { requireServerSession } from "@/server/auth/session";
 import { listProducts } from "@/server/products/product.service";
 
 export async function generateMetadata({
@@ -23,6 +24,7 @@ export default async function ProductsPage({
 }: PageProps<"/[locale]/products">) {
   const { locale } = await params;
   if (!hasLocale(routing.locales, locale)) notFound();
+  await requireServerSession(locale);
   const [products, t] = await Promise.all([
     listProducts(),
     getTranslations({ locale, namespace: "Products" }),

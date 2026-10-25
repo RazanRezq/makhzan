@@ -5,12 +5,18 @@ services:
       dockerfile: apps/web/Dockerfile
       target: development
     init: true
+    depends_on:
+      postgres:
+        condition: service_healthy
     ports:
       - "127.0.0.1:${WEB_PORT:-3000}:3000"
     environment:
       NODE_ENV: development
       DOCKER_WATCH_POLLING: "${DOCKER_WATCH_POLLING:-1}"
       DATABASE_URL: "postgresql://${POSTGRES_USER:-makhzan}:${POSTGRES_PASSWORD:-makhzan}@postgres:5432/${POSTGRES_DB:-makhzan}"
+      BETTER_AUTH_SECRET: "${BETTER_AUTH_SECRET:-local-development-only-auth-secret-change-me}"
+      BETTER_AUTH_URL: "${BETTER_AUTH_URL:-http://localhost:3000}"
+      AUTH_TRUSTED_ORIGINS: "${AUTH_TRUSTED_ORIGINS:-http://localhost:3000,http://127.0.0.1:3000}"
     volumes:
       # Keep Linux dependencies and generated files off the host filesystem.
       - web_node_modules:/workspace/node_modules
@@ -20,12 +26,14 @@ services:
       - ./package.json:/workspace/package.json:ro
       - ./package-lock.json:/workspace/package-lock.json:ro
       - ./apps/web/package.json:/workspace/apps/web/package.json:ro
+      - ./apps/web/auth.cli.ts:/workspace/apps/web/auth.cli.ts:ro
       - ./apps/web/next.config.ts:/workspace/apps/web/next.config.ts:ro
       - ./apps/web/tsconfig.json:/workspace/apps/web/tsconfig.json:ro
       - ./apps/web/eslint.config.mjs:/workspace/apps/web/eslint.config.mjs:ro
       - ./apps/web/vitest.unit.config.mts:/workspace/apps/web/vitest.unit.config.mts:ro
       - ./apps/web/vitest.http.config.mts:/workspace/apps/web/vitest.http.config.mts:ro
       - ./apps/web/vitest.db.config.mts:/workspace/apps/web/vitest.db.config.mts:ro
+      - ./apps/web/vitest.auth.config.mts:/workspace/apps/web/vitest.auth.config.mts:ro
       - ./apps/web/drizzle.config.ts:/workspace/apps/web/drizzle.config.ts:ro
       # Drizzle Kit is the only tool expected to write generated migrations.
       - ./apps/web/drizzle:/workspace/apps/web/drizzle
@@ -39,14 +47,13 @@ services:
         - CMD
         - node
         - -e
-        - "fetch('http://127.0.0.1:3000/en').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
+        - "fetch('http://127.0.0.1:3000/en/sign-in').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"
       interval: 10s
       timeout: 10s
       retries: 12
       start_period: 60s
 
   postgres:
-    profiles: ["database"]
     image: postgres:16
     environment:
       POSTGRES_DB: "${POSTGRES_DB:-makhzan}"

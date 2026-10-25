@@ -1,8 +1,8 @@
 # Database architecture
 
-**Scope:** Sprint 02 Group A. PostgreSQL 16, Drizzle ORM, and the initial
-multi-tenant persistence foundation. Authentication, RLS, product CRUD, stock,
-orders, and database-backed UI remain outside this scope.
+**Scope:** Sprint 02 Group A database foundation plus Group B Better Auth-owned
+identity tables. RLS, tenant membership, product CRUD, stock, orders, and
+database-backed product UI remain outside this scope.
 
 ## Entity relationships
 
@@ -17,6 +17,13 @@ non-null `tenant_id`; product and warehouse tables also expose unique
 `(tenant_id, id)` pairs for future composite tenant-safe foreign keys.
 
 ## Tables
+
+Better Auth owns `user`, `session`, `account`, `verification`, and `rate_limit`.
+They intentionally have no `tenant_id`: they store identity and authentication
+state, not tenant-owned business data. Their generated identifiers and lifecycle
+are controlled by Better Auth. All auth date columns were reviewed to use the
+project-standard UTC `timestamptz` storage supported by the official Drizzle
+adapter.
 
 ### `tenants`
 
@@ -98,13 +105,13 @@ timestamp updates.
 
 ## Known limitations and deferred decisions
 
-- Tenant filters are required in application queries, but authentication,
-  authorization, memberships, and PostgreSQL RLS are not implemented yet.
+- Tenant filters are required in application queries. Identity authentication is
+  implemented, but tenant memberships, authorization, and PostgreSQL RLS are not.
 - Future stock tables must reference products and warehouses with composite
   `(tenant_id, resource_id)` foreign keys.
 - No product/category/unit CRUD or seed data exists in Group A; the dashboard
   continues using its synthetic server-only service.
 - B-tree indexes cover known tenant access patterns. Full-text/trigram search,
   partitioning, replicas, and advanced pooling require measured demand.
-- Better Auth will own its own tables. A later membership design will reference
-  its user identifier without duplicating authentication schema.
+- A later membership design will reference Better Auth's user identifier without
+  duplicating or modifying the authentication schema.

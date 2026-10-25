@@ -43,7 +43,7 @@ export type ProductsApiSuccess = {
 
 export type ProductsApiError = {
   error: {
-    code: "DEMO_API_DISABLED" | "INTERNAL_ERROR";
+    code: "DEMO_API_DISABLED" | "INTERNAL_ERROR" | "UNAUTHENTICATED";
     message: string;
   };
 };

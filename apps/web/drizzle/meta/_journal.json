@@ -15,6 +15,13 @@
       "when": 1792764595611,
       "tag": "0001_updated-at-triggers",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792849717050,
+      "tag": "0002_cooing_hellcat",
+      "breakpoints": true
     }
   ]
 }

@@ -133,8 +133,13 @@ describe("database migrations", () => {
        order by table_name`,
     );
     expect(tables.rows.map(({ table_name }) => table_name)).toEqual([
+      "account",
       "products",
+      "rate_limit",
+      "session",
       "tenants",
+      "user",
+      "verification",
       "warehouses",
     ]);
 
@@ -149,6 +154,10 @@ describe("database migrations", () => {
         "products_tenant_sku_unique",
         "products_tenant_id_unique",
         "products_tenant_id_tenants_id_fk",
+        "session_token_unique",
+        "session_user_id_user_id_fk",
+        "account_user_id_user_id_fk",
+        "user_email_unique",
         "warehouses_tenant_code_unique",
         "warehouses_tenant_id_unique",
         "warehouses_tenant_id_tenants_id_fk",

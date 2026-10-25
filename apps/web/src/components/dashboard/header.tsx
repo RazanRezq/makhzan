@@ -3,10 +3,11 @@
 import { ChevronRight } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { usePathname } from "@/i18n/navigation";
+import { LogoutButton } from "@/features/auth/components/logout-button";
 import { LanguageSwitcher } from "./language-switcher";
 import { MobileNavigation } from "./mobile-navigation";
 
-export function Header() {
+export function Header({ userName }: { userName: string }) {
   const t = useTranslations("Shell");
   const pathname = usePathname();
   const currentSection = pathname.startsWith("/products")
@@ -22,7 +23,13 @@ export function Header() {
           <span className="truncate font-medium">{currentSection}</span>
         </div>
       </div>
-      <LanguageSwitcher />
+      <div className="flex items-center gap-2">
+        <span className="hidden max-w-40 truncate text-sm text-muted-foreground md:block">
+          {userName}
+        </span>
+        <LanguageSwitcher />
+        <LogoutButton compactOnMobile />
+      </div>
     </header>
   );
 }

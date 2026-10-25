@@ -14,7 +14,11 @@ jobs:
     timeout-minutes: 20
     env:
       NEXT_TELEMETRY_DISABLED: "1"
+      DATABASE_URL: postgresql://makhzan_test:makhzan_test@127.0.0.1:5432/makhzan_test
       TEST_DATABASE_URL: postgresql://makhzan_test:makhzan_test@127.0.0.1:5432/makhzan_test
+      BETTER_AUTH_SECRET: ci-only-auth-secret-for-isolated-automated-tests
+      BETTER_AUTH_URL: https://ci.invalid
+      AUTH_TRUSTED_ORIGINS: https://ci.invalid
     services:
       postgres:
         image: postgres:16
@@ -57,6 +61,11 @@ jobs:
 
       - name: Run PostgreSQL Integration Tests
         run: npm run test:db
+        env:
+          NODE_ENV: test
+
+      - name: Run Authentication Integration Tests
+        run: npm run test:auth
         env:
           NODE_ENV: test
 
