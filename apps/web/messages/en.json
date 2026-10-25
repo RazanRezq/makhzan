@@ -186,7 +186,8 @@
       "credentials": "The email or password is incorrect.",
       "registration": "We could not create this account. Try signing in or use a different email address.",
       "rateLimited": "Too many attempts. Wait a moment and try again.",
-      "unavailable": "Authentication is temporarily unavailable. Try again."
+      "unavailable": "Authentication is temporarily unavailable. Try again.",
+      "signOut": "Sign-out could not be confirmed. Please try again."
     },
     "actions": {
       "signIn": "Sign in",

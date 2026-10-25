@@ -20,6 +20,18 @@ deferred.
   untrusted request parameters.
 - Rate limiting is always enabled and stored in PostgreSQL. Email sign-up and
   sign-in are limited to five attempts per minute per Better Auth rate-limit key.
+- Logout only redirects after Better Auth confirms success. Failed or interrupted
+  requests show a translated retry message; the UI does not claim revocation.
+
+Before a public deployment, configure and verify the trusted ingress: it must
+overwrite/sanitize the client IP header, and the application origin must be
+reachable only through that ingress. The current Better Auth default reads
+`X-Forwarded-For`. A directly exposed server can accept forged single-value IP
+headers; an unresolved IP can skip rate limiting in production. The database
+limiter is tested across instances and concurrent requests, but that does not
+prove a deployment's proxy trust configuration. Hosting is deferred; no hosting
+provider or proxy trust range is assumed here. See the
+[Better Auth rate-limit requirements](https://better-auth.com/docs/concepts/rate-limit).
 
 ## Registration and recovery policy
 
@@ -68,3 +80,18 @@ The generated PostgreSQL timestamps were changed only to the adapter-supported
 `DATABASE_URL` are server-only. Production must provide unique secrets and an
 HTTPS public origin. Startup rejects HTTP production origins and the documented
 example secrets; only guarded isolated tests may use a loopback HTTP origin.
+
+## Final security review coverage
+
+The follow-up Group B checks cover rejection of documented production secrets,
+insecure origins, and misuse of the isolated-test flag; forged and expired
+sessions; immediate access denial after logout; hostile or missing mutation
+origins; external callback URLs; generic credential errors; concurrent database
+rate limiting; and authenticated attempts to select a real tenant's product data.
+The latter asserts the current catalog remains synthetic; it does not implement
+or certify future membership/RBAC authorization. The auth migration only adds
+identity tables, indexes, and foreign keys, and leaves business rows intact.
+
+CI reports the full dependency audit without filtering out the four moderate
+esbuild-chain entries. Their reachability assessment and remediation limitation
+are recorded in the root README. Production deployment remains out of scope.

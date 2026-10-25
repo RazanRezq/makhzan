@@ -286,10 +286,86 @@ describe("login and database-backed sessions", () => {
       cookie,
     );
     expect(logout.status).toBe(200);
+    expect(logout.headers.getSetCookie().some((cookie) =>
+      cookie.includes("makhzan.session_token=") && cookie.includes("Max-Age=0"),
+    )).toBe(true);
 
     const sessionResponse = await authRequest("/get-session", { method: "GET" }, cookie);
     expect(await sessionResponse.json()).toBeNull();
     const stored = await pool.query<{ count: string }>('select count(*) from "session"');
     expect(stored.rows[0]?.count).toBe("0");
+  });
+});
+
+describe("authentication security boundaries", () => {
+  it.each(["https://untrusted.example", undefined])(
+    "rejects cookie-authenticated mutations with an untrusted or missing Origin (%s)",
+    async (origin) => {
+      await signUp();
+      const { cookie } = await signIn();
+      const headers = new Headers({ "Content-Type": "application/json", Cookie: cookie ?? "" });
+      if (origin) headers.set("Origin", origin);
+      const response = await auth.handler(new Request(`${AUTH_BASE_URL}/api/auth/sign-out`, {
+        method: "POST", headers, body: "{}",
+      }));
+      expect(response.status).toBe(403);
+      const stored = await pool.query<{ count: string }>('select count(*) from "session"');
+      expect(stored.rows[0]?.count).toBe("1");
+    },
+  );
+
+  it.each(["https://untrusted.example/account", "//untrusted.example/account"])(
+    "rejects an external callback URL (%s)", async (callbackURL) => {
+      await signUp();
+      const response = await authRequest("/sign-in/email", {
+        method: "POST",
+        body: JSON.stringify({ email: "owner@example.test", password: TEST_PASSWORD, callbackURL }),
+      });
+      expect(response.status).toBe(403);
+      expect(response.headers.get("location")).toBeNull();
+      const stored = await pool.query<{ count: string }>('select count(*) from "session"');
+      expect(stored.rows[0]?.count).toBe("0");
+    },
+  );
+
+  it("rejects a modified session signature", async () => {
+    await signUp();
+    const { cookie } = await signIn();
+    const response = await authRequest("/get-session", {}, `${cookie}tampered`);
+    expect(response.status).toBe(200);
+    expect(await response.json()).toBeNull();
+  });
+
+  it("uses the same generic error for an unknown email and incorrect password", async () => {
+    await signUp();
+    const known = await signIn("owner@example.test", "Incorrect-Password-42!");
+    const unknown = await signIn("absent@example.test", "Incorrect-Password-42!");
+    expect(known.response.status).toBe(401);
+    expect(unknown.response.status).toBe(401);
+    expect(await unknown.response.json()).toEqual(await known.response.json());
+  });
+
+  it("shares the five-attempt limit across auth instances and concurrent requests", async () => {
+    await signUp();
+    const otherInstance = betterAuth({
+      ...createAuthOptions(),
+      database: drizzleAdapter(database, { provider: "pg", schema }),
+    });
+    const responses = await Promise.all(Array.from({ length: 6 }, (_, index) => {
+      const instance = index % 2 === 0 ? auth : otherInstance;
+      return instance.handler(new Request(`${AUTH_BASE_URL}/api/auth/sign-in/email`, {
+        method: "POST",
+        headers: { Origin: AUTH_BASE_URL, "Content-Type": "application/json", "X-Forwarded-For": "192.0.2.10" },
+        body: JSON.stringify({ email: "owner@example.test", password: "Incorrect-Password-42!" }),
+      }));
+    }));
+    expect(responses.filter((response) => response.status === 401)).toHaveLength(5);
+    const limited = responses.filter((response) => response.status === 429);
+    expect(limited).toHaveLength(1);
+    expect(Number(limited[0]?.headers.get("x-retry-after"))).toBeGreaterThan(0);
+    const stored = await pool.query<{ count: number }>(
+      'select count from "rate_limit" where key = $1', ["192.0.2.10|/sign-in/email"],
+    );
+    expect(stored.rows[0]?.count).toBe(5);
   });
 });

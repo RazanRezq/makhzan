@@ -52,6 +52,8 @@ const database = drizzle({ client: pool, schema });
 let enabledServer: RunningServer | undefined;
 let disabledServer: RunningServer | undefined;
 let authenticatedCookie: string | undefined;
+let privateTenantId: string;
+const PRIVATE_PRODUCT_SKU = "PRIVATE-TENANT-PRODUCT";
 
 function nextEnvironment(
   demoApiEnabled: boolean,
@@ -198,6 +200,15 @@ beforeAll(async () => {
   await pool.query("drop schema if exists public cascade");
   await pool.query("create schema public");
   await migrate(database, { migrationsFolder });
+  const tenant = await pool.query<{ id: string }>(
+    'insert into tenants (name, base_currency) values ($1, $2) returning id',
+    ["Private test business", "AED"],
+  );
+  privateTenantId = tenant.rows[0]!.id;
+  await pool.query(
+    'insert into products (tenant_id, sku, name, category_code, unit_code) values ($1, $2, $3, $4, $5)',
+    [privateTenantId, PRIVATE_PRODUCT_SKU, "Private tenant data", "TEST", "UNIT"],
+  );
   await rm(distDirectory, { recursive: true, force: true });
   await writeFile(
     testTsconfigPath,
@@ -336,5 +347,64 @@ describe("localized authentication and protected routes", () => {
     const html = await response.text();
     expect(response.status).toBe(200);
     expect(html).toContain(label);
+  });
+});
+
+describe("protected content security boundaries", () => {
+  it.each([
+    ["en", ""], ["ar", ""],
+    ["en", "/pending-setup"], ["ar", "/pending-setup"],
+  ])("requires a server-validated session for /%s%s", async (locale, route) => {
+    const response = await fetch(`${disabledServer?.baseUrl}/${locale}${route}`, {
+      redirect: "manual",
+      headers: { Cookie: "makhzan.session_token=forged-session" },
+    });
+    const html = await response.text();
+    expect(html).toContain(`NEXT_REDIRECT;replace;/${locale}/sign-in;307;`);
+    expect(html).not.toContain("HTTP Test User");
+    expect(html).not.toContain(`http-${process.pid}@example.test`);
+  });
+
+  it("rejects a forged session cookie at the API independently of proxy routing", async () => {
+    const response = await fetch(`${enabledServer?.baseUrl}/api/products`, {
+      headers: { Cookie: "makhzan.session_token=forged-session" },
+    });
+    expect(response.status).toBe(401);
+    expect(response.headers.get("cache-control")).toContain("no-store");
+  });
+
+  it("does not expose tenant records or accept tenant selection from the caller", async () => {
+    const response = await fetch(`${enabledServer?.baseUrl}/api/products?tenant_id=${privateTenantId}`, {
+      headers: { Cookie: authenticatedCookie ?? "", "X-Tenant-Id": privateTenantId },
+    });
+    expect(response.status).toBe(200);
+    const body = await response.text();
+    expect(body).toContain('"source":"synthetic-demo"');
+    expect(body).not.toContain(PRIVATE_PRODUCT_SKU);
+    expect(body).not.toContain(privateTenantId);
+    for (const locale of ["en", "ar"]) {
+      const page = await fetch(`${disabledServer?.baseUrl}/${locale}/products?tenant_id=${privateTenantId}`, {
+        headers: { Cookie: authenticatedCookie ?? "" },
+      });
+      expect(page.status).toBe(200);
+      expect(await page.text()).not.toContain(PRIVATE_PRODUCT_SKU);
+    }
+  });
+
+  it("revokes API and page access immediately after HTTP logout", async () => {
+    if (!enabledServer) throw new Error("Test server is unavailable.");
+    const cookie = await authenticate(enabledServer);
+    const logout = await fetch(`${enabledServer.baseUrl}/api/auth/sign-out`, {
+      method: "POST",
+      headers: { Cookie: cookie, Origin: enabledServer.baseUrl, "Content-Type": "application/json" },
+      body: "{}",
+    });
+    expect(logout.status).toBe(200);
+    const api = await fetch(`${enabledServer.baseUrl}/api/products`, { headers: { Cookie: cookie } });
+    expect(api.status).toBe(401);
+    const page = await fetch(`${enabledServer.baseUrl}/en/products`, { headers: { Cookie: cookie } });
+    const html = await page.text();
+    expect(html).not.toContain("BEV-WAT-001");
+    expect(html).toContain("NEXT_REDIRECT;replace;/en/sign-in;307;");
   });
 });

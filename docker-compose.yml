@@ -53,6 +53,26 @@ services:
       retries: 12
       start_period: 60s
 
+  studio:
+    profiles: ["tools"]
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile
+      target: development
+    init: true
+    working_dir: /workspace/apps/web
+    command: ["../../node_modules/.bin/drizzle-kit", "studio", "--host=0.0.0.0", "--port=4983"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:4983:4983"
+    environment:
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-makhzan}:${POSTGRES_PASSWORD:-makhzan}@postgres:5432/${POSTGRES_DB:-makhzan}"
+    volumes:
+      - ./apps/web/drizzle.config.ts:/workspace/apps/web/drizzle.config.ts:ro
+      - ./apps/web/src:/workspace/apps/web/src:ro
+
   postgres:
     image: postgres:16
     environment:

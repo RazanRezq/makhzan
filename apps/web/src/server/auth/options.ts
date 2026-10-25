@@ -59,6 +59,10 @@ export function createAuthOptions(): BetterAuthOptions {
     telemetry: { enabled: false },
     advanced: {
       cookiePrefix: "makhzan",
+      // Better Auth otherwise skips origin checks under NODE_ENV=test.
+      // Exercise the same security boundary in tests and the running app.
+      disableOriginCheck: false,
+      disableCSRFCheck: false,
     },
   };
 }

@@ -144,6 +144,32 @@ secrets are machine-local and must not be copied through Git. If manifests
 changed, always rebuild the web image so `npm ci` refreshes the dependency
 volume from the lockfile.
 
+## Local Drizzle Studio
+
+Start Studio against the existing development PostgreSQL database (Docker only):
+
+```sh
+docker compose up -d --build studio
+```
+
+Open **https://local.drizzle.studio**. The browser connects to the Studio backend
+at `127.0.0.1:4983`; this is the only additional published port and it is bound
+to localhost. Allow local-device access for that site if your browser prompts.
+The `tools` profile keeps Studio out of the default application startup.
+Starting Studio does not apply migrations or reset data. Studio can edit data;
+use it for inspection and keep application mutations in the domain services.
+
+Stop Studio without stopping PostgreSQL or removing data:
+
+```sh
+docker compose stop studio
+```
+
+If port 4983 is occupied, stop the other local Studio instance first. For
+connection failures, check `docker compose logs studio` and the browser's
+local-device permission. See the [official Studio documentation](https://orm.drizzle.team/docs/drizzle-kit-studio)
+for browser-specific requirements.
+
 ## PostgreSQL and migrations
 
 PostgreSQL is required for authentication, migrations, and integration tests.
@@ -229,9 +255,10 @@ development-tool audit findings must be reviewed separately; do not use
 
 ## Continuous integration
 
-GitHub Actions runs `npm ci`, typecheck, ESLint, 22 Unit/Component tests, 13
-database tests, 9 authentication integration tests, a production build, and 12
-real HTTP integration tests for every push and pull request. PostgreSQL is an
+GitHub Actions runs `npm ci`, the full dependency audit (blocking high/critical
+findings while reporting moderate findings), migration consistency, typecheck,
+ESLint, Unit/Component tests, database and authentication integration tests,
+a production build, and real HTTP integration tests for every push and pull request. PostgreSQL is an
 isolated CI service with synthetic credentials. The workflow uses the Node.js version in
 `.nvmrc` and caches npm downloads using the root lockfile; it does not cache
 `node_modules` or deploy the application.
@@ -240,13 +267,23 @@ GitHub-hosted runner before its status can be called passing.
 
 ## Dependency security
 
-As of 24 October 2026, the full audit and `npm audit --omit=dev` each report four
-moderate findings in Drizzle Kit's legacy esbuild loader chain. Better Auth
-declares Drizzle Kit as an optional peer, so npm includes that development tool
-in the `--omit=dev` graph; `npm audit --omit=dev --omit=optional` reports zero
-runtime findings. The offered remediation is a breaking Drizzle Kit downgrade,
-so it has not been applied. Do not use `npm audit fix --force`; reassess when a
-compatible upstream release is available.
+The 25 October 2026 review found four moderate audit entries in one dependency
+chain: `drizzle-kit` → `@esbuild-kit/esm-loader` → `@esbuild-kit/core-utils` →
+`esbuild@0.18.20`. Both the full audit and `npm audit --omit=dev` report them:
+Better Auth declares Drizzle Kit as an optional peer, keeping the tool in npm's
+production dependency graph.
+
+[GHSA-67mh-4wv8-2f99](https://github.com/evanw/esbuild/security/advisories/GHSA-67mh-4wv8-2f99)
+affects esbuild's development HTTP server. The installed legacy loader uses
+esbuild's transform API; Makhzan serves requests through Next.js and does not
+invoke that esbuild server. No affected runtime request path was identified in
+this configuration. The vulnerable package remains installed, including in the
+development Docker image; this is not a clean audit or a claim that every future
+use is safe. Do not start an affected esbuild development server.
+
+No advisory is suppressed and no optional dependency is omitted to obtain a
+clean report. npm's offered fix is a breaking Drizzle Kit downgrade to 0.18.1,
+so it has not been applied. Reassess when a compatible upstream fix is available.
 
 ## Deployment readiness
 
