@@ -18,7 +18,7 @@ export async function requireTenantPage(
     if (error.code === "UNAUTHENTICATED") redirect(`/${locale}/sign-in`);
     const access = await getCompanyAccess(requestHeaders);
     redirect(
-      `/${locale}/${access.canOnboard ? "onboarding" : "select-company"}`,
+      `/${locale}/${access.companies.length === 0 ? "onboarding" : "select-company"}`,
     );
   }
 }

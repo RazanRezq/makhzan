@@ -81,12 +81,31 @@ does not replace verified email and deployment ingress protections for public us
 
 ## Active tenant and access policy
 
-New accounts go to `/en/onboarding` or `/ar/onboarding`. Existing members without
-a valid selection go to `/[locale]/select-company`, including users with just one
-company. Never silently choose a first company or fall back after revocation.
-Inactive memberships/tenants are excluded from selection. If none are eligible,
-show a generic no-access state without exposing another company's details.
-`pending-setup` remains a compatibility redirect.
+New accounts and users with no eligible memberships go to `/[locale]/onboarding`.
+An existing membership/receipt still prohibits first-company creation: these users
+see a localized no-access/contact-owner state, not a creation form. Inactive
+memberships/tenants are excluded from selection. No other company's details appear.
+
+For a session with no context row, exactly one eligible company is established by
+`resolveCompanyEntryAction`, an authenticated, trusted-origin POST with no client
+tenant/role selector. Sign-in calls it before a single locale-aware navigation.
+Direct protected-page visits use a neutral opening-workspace boundary that invokes
+the same action after hydration; no company-selection form flashes. Rendering,
+prefetching, and GET requests only read context and never select a company.
+
+The entry transaction locks the authenticated user (UPDATE), then session, then
+related tenants and memberships, including inactive rows, before counting eligible
+companies. The user lock blocks membership foreign-key inserts; tenant/membership
+locks serialize status changes. This is a bootstrap-only extension of the normal
+lock order, consistent with onboarding's user-before-session ordering. Concurrent
+entry requests insert at most one context. Existing valid contexts are preserved
+without updates, so refreshes/retries never increment the version or timestamp.
+
+Multiple eligible memberships without a selection require explicit selection.
+An existing but invalid context is never automatically replaced, even if just one
+alternative remains. Show an unavailable-company notice and require explicit
+recovery (or no-access onboarding if none remain). A valid existing selection
+always opens Dashboard. `pending-setup` remains a read-only compatibility redirect.
 
 Every protected operation validates the Better Auth session, selected tenant,
 current membership status/role, tenant status, and required permission. Layout and
@@ -100,6 +119,10 @@ carry the displayed context version as a stale-intent check; the authoritative
 tenant still comes from the server session context. Another tab's switch makes the
 old version invalid. Company selection is shared within a session; independently
 signed-in sessions can choose differently. UI/company labels refresh after a switch.
+The responsive Header displays company and role. Multiple eligible memberships
+enable an accessible Radix dialog/sheet with current-company indication, keyboard
+navigation, Escape/close, and focus return. A single membership renders a static
+label, not a switch action. Choosing the current company closes without a mutation.
 
 Dashboard and Products require an active membership. Products remain the same
 synthetic, clearly labeled demo catalog for all roles; tenant IDs in URLs/headers
@@ -155,8 +178,11 @@ races. Existing unit/database/auth/HTTP suites remain enabled.
 
 HTTP tests run real production Next.js servers and invoke compiled Server Actions
 for onboarding, replay, CSRF/auth/input rejection, selection, stale versions, and
-revocation, plus English/Arabic protected pages. Browser checks supplement these
-with responsive RTL/LTR forms, navigation, and actual client interaction.
+revocation, plus English/Arabic protected pages. Browser verification is separate
+evidence: company-selection UX automation is blocked by execution policy, and
+multiple-company/revocation browser scenarios are not manually verified. The
+[verification record](../verification/group-c-company-selection.md) tracks user
+manual results without treating HTTP/component tests as browser passes.
 
 CI adds `test:tenancy` to the existing job and retains all checks. Local workflow
 validation is not a GitHub-hosted execution. Production registration/recovery and

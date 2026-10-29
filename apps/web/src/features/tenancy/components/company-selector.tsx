@@ -12,10 +12,12 @@ export function CompanySelector({
   companies,
   contextVersion,
   activeTenantId,
+  onSelected,
 }: {
   companies: { tenantId: string; name: string; role: TenantRole }[];
   contextVersion: number;
   activeTenantId: string | null;
+  onSelected?: () => void;
 }) {
   const t = useTranslations("Tenancy");
   const router = useRouter();
@@ -23,6 +25,10 @@ export function CompanySelector({
   const [error, setError] = useState<TenancyErrorCode>();
 
   async function choose(tenantId: string) {
+    if (tenantId === activeTenantId) {
+      onSelected?.();
+      return;
+    }
     setPending(true);
     setError(undefined);
     try {
@@ -34,6 +40,7 @@ export function CompanySelector({
         setError(result.code);
         return;
       }
+      onSelected?.();
       router.replace("/");
       router.refresh();
     } catch {

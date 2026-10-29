@@ -59,3 +59,6 @@ export const TENANCY_ERROR_CODES = [
 export type TenancyErrorCode = (typeof TENANCY_ERROR_CODES)[number];
 export type TenantActionResult =
   { ok: true } | { ok: false; code: TenancyErrorCode };
+export type CompanyEntryResult =
+  | { ok: true; destination: "/" | "/onboarding" | "/select-company" }
+  | { ok: false; code: TenancyErrorCode };

@@ -6,6 +6,7 @@ import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
 import { Link, useRouter } from "@/i18n/navigation";
 import { authClient } from "@/lib/auth/auth-client";
+import { resolveCompanyEntryAction } from "@/features/tenancy/actions";
 import {
   AUTH_NAME_MAX_LENGTH,
   AUTH_NAME_MIN_LENGTH,
@@ -123,7 +124,12 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
           );
           return;
         }
-        router.replace("/");
+        const entry = await resolveCompanyEntryAction();
+        if (!entry.ok) {
+          setFormError(t("errors.unavailable"));
+          return;
+        }
+        router.replace(entry.destination);
       }
       router.refresh();
     } catch {

@@ -9,5 +9,5 @@ export default async function PendingSetupPage({ params }: PageProps<"/[locale]/
   const { locale } = await params;
   await requireServerSession(locale);
   const access = await getCompanyAccess(await headers());
-  redirect(`/${locale}/${access.canOnboard ? "onboarding" : access.activeTenantId ? "" : "select-company"}`);
+  redirect(`/${locale}/${access.activeTenantId ? "" : access.companies.length === 0 ? "onboarding" : "select-company"}`);
 }

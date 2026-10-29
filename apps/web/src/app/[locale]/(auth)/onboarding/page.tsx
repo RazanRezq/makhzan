@@ -19,7 +19,7 @@ export default async function OnboardingPage({
   if (!hasLocale(routing.locales, locale)) notFound();
   await requireServerSession(locale);
   const access = await getCompanyAccess(await headers());
-  if (!access.canOnboard)
+  if (access.companies.length > 0)
     redirect(`/${locale}/${access.activeTenantId ? "" : "select-company"}`);
   const t = await getTranslations("Tenancy");
   const currencyNames = new Intl.DisplayNames(locale, { type: "currency" });
@@ -29,13 +29,19 @@ export default async function OnboardingPage({
   }));
   return (
     <AuthShell
-      title={t("onboardingTitle")}
-      description={t("onboardingDescription")}
+      title={t(access.canOnboard ? "onboardingTitle" : "accessUnavailableTitle")}
+      description={t(access.canOnboard ? "onboardingDescription" : "accessUnavailableDescription")}
     >
-      <CompanyForm
-        currencies={currencies}
-        timezones={["UTC", ...Intl.supportedValuesOf("timeZone")]}
-      />
+      {access.canOnboard ? (
+        <CompanyForm
+          currencies={currencies}
+          timezones={["UTC", ...Intl.supportedValuesOf("timeZone")]}
+        />
+      ) : (
+        <p role="status" className="rounded-md border bg-muted p-4 text-sm text-muted-foreground">
+          {t(access.selectionUnavailable ? "selectionUnavailableNoAccess" : "noAccess")}
+        </p>
+      )}
       <div className="mt-6 flex items-center justify-between gap-3">
         <LanguageSwitcher />
         <LogoutButton />

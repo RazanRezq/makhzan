@@ -319,11 +319,17 @@ Dashboard and the synthetic demo catalog require an active company membership an
 selection. New accounts land on `/[locale]/onboarding`, which atomically creates
 their first company and OWNER membership. Users with any membership, including an
 inactive one, cannot create another company through initial onboarding. Members
-choose a company at `/[locale]/select-company`; no company is selected implicitly.
-The header shows the active company/role and links to the selector. Switching is
+choose explicitly when multiple companies are eligible. A secure POST automatically
+establishes the sole eligible company only for sessions with no previous selection;
+GET requests never select a company. Invalid/revoked selections require explicit
+recovery, never silent fallback. The header shows the active company/role and offers
+a responsive switcher only for multiple eligible companies. Switching is
 session-scoped, with version checks rejecting stale-tab mutations. Existing
 companies are never automatically claimed. See [tenant architecture](docs/architecture/tenancy.md) and
 [`docs/architecture/authentication.md`](docs/architecture/authentication.md).
+
+Company-selection UX test results and browser-verification limitations are recorded
+in [Group C verification](docs/verification/group-c-company-selection.md).
 
 ## Troubleshooting
 

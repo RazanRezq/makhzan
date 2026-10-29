@@ -41,6 +41,7 @@ let appPool: typeof import("@/server/db").databasePool;
 let createCompany: typeof import("@/server/tenants/onboarding.service").createFirstCompany;
 let choose: typeof import("@/server/tenants/context.service").selectCompany;
 let access: typeof import("@/server/tenants/context.service").getCompanyAccess;
+let enter: typeof import("@/server/tenants/context.service").resolveCompanyEntry;
 let authorize: typeof import("@/server/tenants/security").authorizeTenant;
 let updateMember: typeof import("@/server/tenants/membership.service").updateMembership;
 const people: {
@@ -176,7 +177,7 @@ beforeAll(async () => {
   ({ databasePool: appPool } = await import("@/server/db"));
   ({ createFirstCompany: createCompany } =
     await import("@/server/tenants/onboarding.service"));
-  ({ selectCompany: choose, getCompanyAccess: access } =
+  ({ selectCompany: choose, getCompanyAccess: access, resolveCompanyEntry: enter } =
     await import("@/server/tenants/context.service"));
   ({ authorizeTenant: authorize } = await import("@/server/tenants/security"));
   ({ updateMembership: updateMember } =
@@ -510,7 +511,7 @@ describe("active tenant isolation and revocation", () => {
     ).rejects.toMatchObject({ code: "NO_TENANT" });
   });
 
-  it("lists only the user's memberships and requires explicit selection even with one company", async () => {
+  it("keeps discovery read-only even with exactly one eligible company", async () => {
     const other = await fixtureTenant(1);
     await member(other, 0, "VIEWER");
     const own = await access(people[0]!.headers);
@@ -637,6 +638,120 @@ describe("active tenant isolation and revocation", () => {
       await revocation.query("rollback");
       revocation.release();
     }
+  });
+});
+
+describe("secure single-company entry", () => {
+  it("sends zero memberships to onboarding without claiming a company", async () => {
+    await fixtureTenant(1);
+    expect(await enter(people[0]!.headers)).toEqual({ destination: "/onboarding" });
+    expect((await access(people[0]!.headers)).contextVersion).toBe(0);
+  });
+
+  it("selects the only eligible membership without elevating its role", async () => {
+    const tenantId = await fixtureTenant(1);
+    await member(tenantId, 0, "VIEWER");
+    expect(await enter(people[0]!.headers)).toEqual({ destination: "/" });
+    expect(await authorize(people[0]!.headers, "dashboard.read")).toMatchObject({
+      tenantId, role: "VIEWER", version: 1,
+    });
+    await expect(authorize(people[0]!.headers, "inventory.adjust"))
+      .rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("keeps refreshes and concurrent repeated entry free of context updates", async () => {
+    const tenantId = await fixtureTenant(1);
+    await member(tenantId, 0);
+    await Promise.all(Array.from({ length: 4 }, () => enter(people[0]!.headers)));
+    const before = await pool.query("select * from session_tenant_context where session_id=$1", [people[0]!.sessionId]);
+    for (let i = 0; i < 3; i++) {
+      await access(people[0]!.headers);
+      await enter(people[0]!.headers);
+    }
+    const after = await pool.query("select * from session_tenant_context where session_id=$1", [people[0]!.sessionId]);
+    expect(after.rows).toEqual(before.rows);
+    expect(after.rows[0].version).toBe(1);
+  });
+
+  it("never chooses arbitrarily between multiple memberships", async () => {
+    await member(await fixtureTenant(1), 0);
+    await member(await fixtureTenant(2), 0, "VIEWER");
+    expect(await enter(people[0]!.headers)).toEqual({ destination: "/select-company" });
+    expect((await access(people[0]!.headers)).contextVersion).toBe(0);
+  });
+
+  it("preserves a valid selection when multiple companies are eligible", async () => {
+    const selected = await fixtureTenant();
+    await member(await fixtureTenant(1), 0, "VIEWER");
+    expect(await enter(people[0]!.headers)).toEqual({ destination: "/" });
+    expect(await authorize(people[0]!.headers, "dashboard.read"))
+      .toMatchObject({ tenantId: selected, version: 1 });
+  });
+
+  it.each(["membership", "tenant"])("never falls back after selected %s becomes inactive", async (kind) => {
+    const selected = await fixtureTenant();
+    await member(await fixtureTenant(1), 0, "VIEWER");
+    if (kind === "membership")
+      await pool.query("update tenant_memberships set status='INACTIVE' where tenant_id=$1 and user_id=$2", [selected, people[0]!.id]);
+    else await pool.query("update tenants set status='INACTIVE' where id=$1", [selected]);
+    expect(await enter(people[0]!.headers)).toEqual({ destination: "/select-company" });
+    expect(await access(people[0]!.headers)).toMatchObject({
+      activeTenantId: null, selectionUnavailable: true, needsAutoSelection: false, contextVersion: 1,
+    });
+    const result = await pool.query("select tenant_id from session_tenant_context where session_id=$1", [people[0]!.sessionId]);
+    expect(result.rows[0].tenant_id).toBe(selected);
+    await expect(authorize(people[0]!.headers, "dashboard.read"))
+      .rejects.toMatchObject({ code: "FORBIDDEN" });
+  });
+
+  it("does not replace a forged/invalid stored context with the only eligible company", async () => {
+    await fixtureTenant();
+    const foreign = await fixtureTenant(1);
+    await pool.query("update session_tenant_context set tenant_id=$1 where session_id=$2", [foreign, people[0]!.sessionId]);
+    expect(await enter(people[0]!.headers)).toEqual({ destination: "/select-company" });
+    expect((await access(people[0]!.headers)).selectionUnavailable).toBe(true);
+  });
+
+  it.each(["membership", "tenant"])("excludes inactive %s and routes to safe onboarding without enabling company creation", async (kind) => {
+    const only = await fixtureTenant(1);
+    await member(only, 0);
+    if (kind === "membership")
+      await pool.query("update tenant_memberships set status='INACTIVE' where tenant_id=$1 and user_id=$2", [only, people[0]!.id]);
+    else await pool.query("update tenants set status='INACTIVE' where id=$1", [only]);
+    expect(await enter(people[0]!.headers)).toEqual({ destination: "/onboarding" });
+    expect(await access(people[0]!.headers)).toMatchObject({ canOnboard: false, contextVersion: 0 });
+    await expect(createCompany(people[0]!.headers, companyInput()))
+      .rejects.toMatchObject({ code: "ALREADY_MEMBER" });
+  });
+
+  it("revalidates membership after waiting on a concurrent revocation", async () => {
+    const only = await fixtureTenant(1);
+    await member(only, 0);
+    const client = await pool.connect();
+    try {
+      await client.query("begin");
+      await client.query("select id from tenants where id=$1 for update", [only]);
+      await client.query("update tenant_memberships set status='INACTIVE' where tenant_id=$1 and user_id=$2", [only, people[0]!.id]);
+      const pending = enter(people[0]!.headers);
+      await client.query("commit");
+      expect(await pending).toEqual({ destination: "/onboarding" });
+      expect((await access(people[0]!.headers)).contextVersion).toBe(0);
+    } finally {
+      await client.query("rollback");
+      client.release();
+    }
+  });
+
+  it("requires authentication and trusted mutation origin", async () => {
+    await expect(enter(new Headers({ Origin: BASE }))).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
+    for (const origin of [undefined, "https://hostile.example"]) {
+      const headers = new Headers(people[0]!.headers);
+      if (origin) headers.set("Origin", origin);
+      else headers.delete("Origin");
+      await expect(enter(headers)).rejects.toMatchObject({ code: "FORBIDDEN" });
+    }
+    await pool.query('update "session" set expires_at=now()-interval \'1 hour\' where id=$1', [people[0]!.sessionId]);
+    await expect(enter(people[0]!.headers)).rejects.toMatchObject({ code: "UNAUTHENTICATED" });
   });
 });
 

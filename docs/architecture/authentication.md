@@ -60,8 +60,13 @@ synthetic Products API independently validates its session on every request.
 
 Dashboard and synthetic catalog access now additionally require a current active
 tenant membership and active tenant selection. Authentication alone grants no
-tenant access. New users go to `/[locale]/onboarding`; members without a selection
-go to `/[locale]/select-company`. `pending-setup` is a compatibility redirect.
+tenant access. Users without eligible memberships go to `/[locale]/onboarding`
+(prior members see a safe no-access state, not a new-company form). An authenticated,
+origin-checked POST establishes a sole eligible company only when the session has
+never selected one; multiple memberships require `/[locale]/select-company`.
+Invalid/revoked contexts are never silently replaced. Sign-in resolves this before
+navigation; direct visits use a neutral POST bootstrap. GET/rendering is read-only.
+`pending-setup` is a compatibility redirect.
 Every page/API performs its own service check before producing protected content.
 
 The existing next-intl proxy remains routing-only and excludes all `/api/*`

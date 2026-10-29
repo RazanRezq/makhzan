@@ -13,6 +13,7 @@ const mocks = vi.hoisted(() => ({
   replace: vi.fn(),
   signInEmail: vi.fn(),
   signUpEmail: vi.fn(),
+  entry: vi.fn(),
 }));
 
 vi.mock("@/i18n/navigation", () => ({
@@ -27,6 +28,9 @@ vi.mock("@/lib/auth/auth-client", () => ({
     signIn: { email: mocks.signInEmail },
     signUp: { email: mocks.signUpEmail },
   },
+}));
+vi.mock("@/features/tenancy/actions", () => ({
+  resolveCompanyEntryAction: mocks.entry,
 }));
 
 afterEach(() => {
@@ -55,6 +59,7 @@ describe("AuthForm", () => {
   });
 
   it("disables submission while signing in and redirects after success", async () => {
+    mocks.entry.mockResolvedValue({ ok: true, destination: "/" });
     let completeSignIn: ((value: { data: object; error: null }) => void) | undefined;
     mocks.signInEmail.mockReturnValue(
       new Promise((resolve) => {
@@ -75,5 +80,17 @@ describe("AuthForm", () => {
     completeSignIn?.({ data: {}, error: null });
     await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith("/"));
     expect(mocks.refresh).toHaveBeenCalledOnce();
+  });
+
+  it.each(["/onboarding", "/select-company"])("navigates directly to %s after login resolution", async (destination) => {
+    mocks.signInEmail.mockResolvedValue({ data: {}, error: null });
+    mocks.entry.mockResolvedValue({ ok: true, destination });
+    const user = userEvent.setup();
+    renderForm("sign-in");
+    await user.type(screen.getByLabelText("Email address"), "owner@example.test");
+    await user.type(screen.getByLabelText("Password"), "Correct-Horse-42!");
+    await user.click(screen.getByRole("button", { name: "Sign in" }));
+    await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith(destination));
+    expect(mocks.replace).toHaveBeenCalledOnce();
   });
 });

@@ -545,6 +545,10 @@ describe("company onboarding and active-context HTTP boundaries", () => {
     const response = await fetch(`${enabledServer.baseUrl}/api/auth/get-session`, { headers: { Cookie: cookie } });
     const identity = await response.json() as AuthSession;
     await pool.query("insert into tenant_memberships(tenant_id,user_id,role) values ($1,$2,'VIEWER')", [memberTenantId, identity.user.id]);
+    const alternative = await pool.query<{ id: string }>("insert into tenants(name,base_currency) values ('HTTP Selection Alternative','AED') returning id");
+    await pool.query("insert into tenant_memberships(tenant_id,user_id,role) values ($1,$2,'VIEWER')", [alternative.rows[0]!.id, identity.user.id]);
+    const unresolved = await action("resolveCompanyEntryAction", "/en/sign-in", undefined, cookie);
+    expect(await unresolved.text()).toContain('"destination":"/select-company"');
     const blocked = await fetch(`${enabledServer.baseUrl}/en/products`, { headers: { Cookie: cookie } });
     expect(await blocked.text()).toContain("NEXT_REDIRECT;replace;/en/select-company;307;");
     for (const locale of ["en", "ar"]) {
@@ -564,5 +568,57 @@ describe("company onboarding and active-context HTTP boundaries", () => {
     const html = await page.text();
     expect(html).not.toContain("BEV-WAT-001");
     expect(html).not.toContain("HTTP Authorized Company");
+  });
+
+  it.each(["en", "ar"])("bootstraps a sole company via POST, never GET, in %s", async (locale) => {
+    if (!enabledServer) throw new Error("Test server unavailable.");
+    // Independent fixtures share the same loopback client. Clear only their
+    // signup/login counters in the already-guarded disposable test database.
+    // Runtime throttling and its separate authentication tests stay unchanged.
+    await pool.query("delete from rate_limit where key in ('127.0.0.1|/sign-up/email', '127.0.0.1|/sign-in/email')");
+    const cookie = await authenticate(enabledServer, false, `-auto-${locale}`);
+    const identity = await (await fetch(`${enabledServer.baseUrl}/api/auth/get-session`, { headers: { Cookie: cookie } })).json() as AuthSession;
+    await pool.query("insert into tenant_memberships(tenant_id,user_id,role) values ($1,$2,'VIEWER')", [memberTenantId, identity.user.id]);
+    for (let i = 0; i < 2; i++) {
+      const response = await fetch(`${enabledServer.baseUrl}/${locale}/select-company`, { headers: { Cookie: cookie } });
+      const html = await response.text();
+      expect(response.status).toBe(200);
+      expect(html).toContain(locale === "ar" ? "جارٍ فتح مساحة العمل" : "Opening your workspace");
+      const context = await pool.query("select * from session_tenant_context where session_id=$1", [identity.session.id]);
+      expect(context.rows).toHaveLength(0);
+    }
+    const post = await action("resolveCompanyEntryAction", `/${locale}/select-company`, undefined, cookie);
+    expect(await post.text()).toContain('"destination":"/"');
+    const before = await pool.query("select * from session_tenant_context where session_id=$1", [identity.session.id]);
+    const replay = await action("resolveCompanyEntryAction", `/${locale}/select-company`, undefined, cookie);
+    expect(await replay.text()).toContain('"destination":"/"');
+    const page = await fetch(`${enabledServer.baseUrl}/${locale}`, { headers: { Cookie: cookie } });
+    expect(page.status).toBe(200);
+    const html = await page.text();
+    expect(html).toContain("HTTP Authorized Company");
+    expect(html).toContain(locale === "ar" ? "المشاهد" : "Viewer");
+    expect(html).toContain(`aria-label="${locale === "ar" ? "الشركة النشطة" : "Active company"}"`);
+    expect(html.includes('aria-label="Switch company:')).toBe(false);
+    expect(html.includes('aria-label="تبديل الشركة:')).toBe(false);
+    const after = await pool.query("select * from session_tenant_context where session_id=$1", [identity.session.id]);
+    expect(after.rows).toEqual(before.rows);
+    expect(after.rows[0].version).toBe(1);
+    await pool.query("update tenant_memberships set status='INACTIVE' where tenant_id=$1 and user_id=$2", [memberTenantId, identity.user.id]);
+    const revoked = await action("resolveCompanyEntryAction", `/${locale}/select-company`, undefined, cookie);
+    expect(await revoked.text()).toContain('"destination":"/onboarding"');
+    const unavailable = await fetch(`${enabledServer.baseUrl}/${locale}/onboarding`, { headers: { Cookie: cookie } });
+    const unavailableHtml = await unavailable.text();
+    expect(unavailable.status).toBe(200);
+    expect(unavailableHtml).toContain(locale === "ar" ? "الوصول إلى الشركة غير متاح" : "Company access unavailable");
+    expect(unavailableHtml.includes('id="company-name"')).toBe(false);
+    const retained = await pool.query("select * from session_tenant_context where session_id=$1", [identity.session.id]);
+    expect(retained.rows).toEqual(before.rows);
+  });
+
+  it("protects automatic entry from unauthenticated and forged-origin requests", async () => {
+    const unauthenticated = await action("resolveCompanyEntryAction", "/en/sign-in", undefined, "");
+    expect(await unauthenticated.text()).toContain("UNAUTHENTICATED");
+    const hostile = await action("resolveCompanyEntryAction", "/en/sign-in", undefined, authenticatedCookie ?? "", "https://hostile.example");
+    expect(hostile.status).toBeGreaterThanOrEqual(400);
   });
 });
