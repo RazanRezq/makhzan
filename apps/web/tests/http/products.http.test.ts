@@ -461,14 +461,22 @@ describe("company onboarding and active-context HTTP boundaries", () => {
       expect(html).toContain(`NEXT_REDIRECT;replace;/${locale}/onboarding;307;`);
       const onboarding = await fetch(`${enabledServer.baseUrl}/${locale}/onboarding`, { headers: { Cookie: cookie } });
       expect(onboarding.status).toBe(200);
-      expect(await onboarding.text()).toContain(locale === "ar" ? "أنشئ شركتك" : "Create your company");
+      const onboardingHtml = await onboarding.text();
+      expect(onboardingHtml).toContain(locale === "ar" ? "أنشئ شركتك" : "Create your company");
+      expect(onboardingHtml).toContain(`<html lang="${locale}" dir="${locale === "ar" ? "rtl" : "ltr"}"`);
+      expect(onboardingHtml).toMatch(/<select[^>]*name="baseCurrency"/);
+      expect(onboardingHtml).toContain('<option value="TRY">');
+      expect(onboardingHtml).toMatch(/<select[^>]*name="timezone"/);
+      expect(onboardingHtml).toContain('<option value="Europe/Istanbul">');
+      expect(onboardingHtml).not.toContain('<option value="TR">');
+      expect(onboardingHtml).not.toContain('<option value="Europe/Turkey">');
     }
   });
 
   it("creates a company through the real Server Action and safely replays the result", async () => {
     if (!enabledServer) throw new Error("Test server unavailable.");
     const cookie = await authenticate(enabledServer, false, "-onboarding-action");
-    const input = { name: "Action Company", baseCurrency: "AED", timezone: "Asia/Dubai", operationId: randomUUID() };
+    const input = { name: "Action Company", baseCurrency: "TRY", timezone: "Europe/Istanbul", operationId: randomUUID() };
     for (let attempt = 0; attempt < 2; attempt++) {
       const response = await action("createCompanyAction", "/en/onboarding", input, cookie);
       expect(response.status).toBe(200);
@@ -476,6 +484,10 @@ describe("company onboarding and active-context HTTP boundaries", () => {
     }
     const companies = await pool.query<{ count: number }>("select count(*)::int count from tenants where name='Action Company'");
     expect(companies.rows[0]!.count).toBe(1);
+    const settings = await pool.query<{ base_currency: string; timezone: string }>(
+      "select base_currency, timezone from tenants where name='Action Company'",
+    );
+    expect(settings.rows).toEqual([{ base_currency: "TRY", timezone: "Europe/Istanbul" }]);
     const page = await fetch(`${enabledServer.baseUrl}/ar/products`, { headers: { Cookie: cookie } });
     const html = await page.text();
     expect(html).toContain("Action Company");
@@ -508,6 +520,10 @@ describe("company onboarding and active-context HTTP boundaries", () => {
     expect(await unauthenticated.text()).toContain("UNAUTHENTICATED");
     const invalid = await action("createCompanyAction", "/en/onboarding", { ...input, role: "OWNER" }, authenticatedCookie ?? "");
     expect(await invalid.text()).toContain("INVALID_INPUT");
+    for (const change of [{ baseCurrency: "Tr" }, { timezone: "Europe/Turkey" }]) {
+      const invalidDetails = await action("createCompanyAction", "/en/onboarding", { ...input, ...change }, authenticatedCookie ?? "");
+      expect(await invalidDetails.text()).toContain("INVALID_INPUT");
+    }
     const hostile = await action("createCompanyAction", "/en/onboarding", input, authenticatedCookie ?? "", "https://hostile.example");
     expect(hostile.status).toBeGreaterThanOrEqual(400);
     const companies = await pool.query<{ count: number }>("select count(*)::int count from tenants where name='Rejected'");

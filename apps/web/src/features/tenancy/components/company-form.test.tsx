@@ -4,8 +4,14 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NextIntlClientProvider } from "next-intl";
 import messages from "../../../../messages/en.json";
+import arabicMessages from "../../../../messages/ar.json";
 import { CompanyForm } from "./company-form";
 import { CompanySelector } from "./company-selector";
+
+const formOptions = {
+  currencies: Intl.supportedValuesOf("currency").map((code) => ({ code, label: code })),
+  timezones: ["UTC", ...Intl.supportedValuesOf("timeZone")],
+};
 
 const mocks = vi.hoisted(() => ({
   create: vi.fn(),
@@ -34,7 +40,7 @@ describe("company onboarding UI", () => {
     const user = userEvent.setup();
     render(
       <NextIntlClientProvider locale="en" messages={messages}>
-        <CompanyForm />
+        <CompanyForm {...formOptions} />
       </NextIntlClientProvider>,
     );
     await user.type(screen.getByLabelText("Company name"), "Acme");
@@ -49,6 +55,51 @@ describe("company onboarding UI", () => {
       mocks.create.mock.calls[1]![0].operationId,
     );
     expect(mocks.refresh).toHaveBeenCalledOnce();
+  });
+
+  it.each(["en", "ar"] as const)(
+    "offers valid Turkish currency and timezone choices in %s",
+    async (locale) => {
+      mocks.create.mockResolvedValue({ ok: true });
+      const user = userEvent.setup();
+      const translation = locale === "ar" ? arabicMessages : messages;
+      render(
+        <NextIntlClientProvider locale={locale} messages={translation}>
+          <CompanyForm {...formOptions} />
+        </NextIntlClientProvider>,
+      );
+      const currency = screen.getByRole("combobox", { name: translation.Tenancy.fields.currency });
+      const timezone = screen.getByRole("combobox", { name: translation.Tenancy.fields.timezone });
+      expect(screen.queryByRole("option", { name: "TR" })).toBeNull();
+      expect(screen.queryByRole("option", { name: "Europe/Turkey" })).toBeNull();
+      await user.type(screen.getByLabelText(translation.Tenancy.fields.name), " Tarqeem ");
+      await user.selectOptions(currency, "TRY");
+      await user.selectOptions(timezone, "Europe/Istanbul");
+      await user.click(screen.getByRole("button", { name: translation.Tenancy.create }));
+      await waitFor(() => expect(mocks.replace).toHaveBeenCalledWith("/"));
+      expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({
+        name: "Tarqeem", baseCurrency: "TRY", timezone: "Europe/Istanbul",
+      }));
+    },
+  );
+
+  it("identifies an invalid company name and clears its error when corrected", async () => {
+    const user = userEvent.setup();
+    render(
+      <NextIntlClientProvider locale="en" messages={messages}>
+        <CompanyForm {...formOptions} />
+      </NextIntlClientProvider>,
+    );
+    const name = screen.getByLabelText("Company name");
+    await user.type(name, "   ");
+    await user.click(screen.getByRole("button", { name: "Create company" }));
+    expect(await screen.findByText(messages.Tenancy.validation.name)).toBeTruthy();
+    expect(name.getAttribute("aria-invalid")).toBe("true");
+    expect(name.getAttribute("aria-describedby")).toBe("company-name-error");
+    expect(mocks.create).not.toHaveBeenCalled();
+    await user.type(name, "Tarqeem");
+    expect(screen.queryByText(messages.Tenancy.validation.name)).toBeNull();
+    expect(name.hasAttribute("aria-invalid")).toBe(false);
   });
 
   it("keeps the selected-company version and shows stale-context recovery", async () => {

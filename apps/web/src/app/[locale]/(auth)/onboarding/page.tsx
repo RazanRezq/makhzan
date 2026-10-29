@@ -22,12 +22,20 @@ export default async function OnboardingPage({
   if (!access.canOnboard)
     redirect(`/${locale}/${access.activeTenantId ? "" : "select-company"}`);
   const t = await getTranslations("Tenancy");
+  const currencyNames = new Intl.DisplayNames(locale, { type: "currency" });
+  const currencies = Intl.supportedValuesOf("currency").map((code) => ({
+    code,
+    label: t("currencyOption", { code, name: currencyNames.of(code) ?? code }),
+  }));
   return (
     <AuthShell
       title={t("onboardingTitle")}
       description={t("onboardingDescription")}
     >
-      <CompanyForm />
+      <CompanyForm
+        currencies={currencies}
+        timezones={["UTC", ...Intl.supportedValuesOf("timeZone")]}
+      />
       <div className="mt-6 flex items-center justify-between gap-3">
         <LanguageSwitcher />
         <LogoutButton />

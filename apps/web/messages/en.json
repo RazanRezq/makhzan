@@ -10,8 +10,14 @@
       "currency": "Base currency",
       "timezone": "Timezone"
     },
-    "currencyHelp": "Use a supported three-letter currency code, such as AED, SAR or KWD.",
-    "timezoneHelp": "Use a timezone such as Asia/Dubai or UTC.",
+    "currencyOption": "{code} — {name}",
+    "currencyHelp": "Select your base currency. For Turkish lira, choose TRY.",
+    "timezoneHelp": "Select your timezone. For Türkiye, choose Europe/Istanbul.",
+    "validation": {
+      "name": "Enter a company name between 1 and 160 characters, not just spaces.",
+      "currency": "Select a supported three-letter currency code, such as TRY or AED.",
+      "timezone": "Select a supported timezone, such as Europe/Istanbul or Asia/Dubai."
+    },
     "create": "Create company",
     "saving": "Saving…",
     "current": "Current",

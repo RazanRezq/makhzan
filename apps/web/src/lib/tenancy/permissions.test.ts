@@ -68,4 +68,11 @@ describe("onboarding input", () => {
       ).toBe(false);
     },
   );
+  it("accepts Turkish company details but rejects the screenshot's invalid identifiers", () => {
+    expect(onboardingInputSchema.safeParse({
+      ...input, baseCurrency: "try", timezone: "Europe/Istanbul",
+    }).success).toBe(true);
+    expect(onboardingInputSchema.safeParse({ ...input, baseCurrency: "Tr" }).success).toBe(false);
+    expect(onboardingInputSchema.safeParse({ ...input, timezone: "Europe/Turkey" }).success).toBe(false);
+  });
 });

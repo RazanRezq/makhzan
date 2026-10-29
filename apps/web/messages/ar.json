@@ -10,8 +10,14 @@
       "currency": "العملة الأساسية",
       "timezone": "المنطقة الزمنية"
     },
-    "currencyHelp": "استخدم رمز عملة مدعومًا من ثلاثة أحرف، مثل AED أو SAR أو KWD.",
-    "timezoneHelp": "استخدم منطقة زمنية مثل Asia/Dubai أو UTC.",
+    "currencyOption": "{code} — {name}",
+    "currencyHelp": "اختر العملة الأساسية. لليرة التركية، اختر TRY.",
+    "timezoneHelp": "اختر المنطقة الزمنية. لتركيا، اختر Europe/Istanbul.",
+    "validation": {
+      "name": "أدخل اسم شركة من حرف واحد إلى 160 حرفًا، وليس مسافات فقط.",
+      "currency": "اختر رمز عملة مدعومًا من ثلاثة أحرف، مثل TRY أو AED.",
+      "timezone": "اختر منطقة زمنية مدعومة، مثل Europe/Istanbul أو Asia/Dubai."
+    },
     "create": "إنشاء الشركة",
     "saving": "جارٍ الحفظ…",
     "current": "الحالية",
