@@ -3,7 +3,7 @@ import type {
   ProductsApiError,
   ProductsApiSuccess,
 } from "@/lib/products/product.types";
-import { auth } from "@/server/auth/auth";
+import { authorizeTenant, TenancyError } from "@/server/tenants/security";
 import { listProducts } from "@/server/products/product.service";
 
 function isDemoApiEnabled() {
@@ -16,16 +16,19 @@ function isDemoApiEnabled() {
 export async function GET(request: Request): Promise<Response> {
   await connection();
 
-  const session = await auth.api.getSession({ headers: request.headers });
-  if (!session) {
+  try {
+    await authorizeTenant(request.headers, "demoProducts.read");
+  } catch (error) {
+    const unauthenticated = error instanceof TenancyError && error.code === "UNAUTHENTICATED";
+    const unavailable = !(error instanceof TenancyError);
     const response: ProductsApiError = {
       error: {
-        code: "UNAUTHENTICATED",
-        message: "Authentication is required.",
+        code: unauthenticated ? "UNAUTHENTICATED" : unavailable ? "INTERNAL_ERROR" : "FORBIDDEN",
+        message: unauthenticated ? "Authentication is required." : unavailable ? "Unable to load synthetic products." : "An active company membership is required.",
       },
     };
     return Response.json(response, {
-      status: 401,
+      status: unauthenticated ? 401 : unavailable ? 500 : 403,
       headers: { "Cache-Control": "no-store" },
     });
   }

@@ -34,6 +34,7 @@ services:
       - ./apps/web/vitest.http.config.mts:/workspace/apps/web/vitest.http.config.mts:ro
       - ./apps/web/vitest.db.config.mts:/workspace/apps/web/vitest.db.config.mts:ro
       - ./apps/web/vitest.auth.config.mts:/workspace/apps/web/vitest.auth.config.mts:ro
+      - ./apps/web/vitest.tenancy.config.mts:/workspace/apps/web/vitest.tenancy.config.mts:ro
       - ./apps/web/drizzle.config.ts:/workspace/apps/web/drizzle.config.ts:ro
       # Drizzle Kit is the only tool expected to write generated migrations.
       - ./apps/web/drizzle:/workspace/apps/web/drizzle

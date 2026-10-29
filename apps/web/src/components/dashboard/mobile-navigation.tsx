@@ -7,8 +7,9 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { Brand } from "./brand";
 import { Navigation } from "./navigation";
+import type { TenantRole } from "@/lib/tenancy/permissions";
 
-export function MobileNavigation() {
+export function MobileNavigation({ role }: { role: TenantRole }) {
   const t = useTranslations("Navigation");
   const [open, setOpen] = useState(false);
 
@@ -32,7 +33,7 @@ export function MobileNavigation() {
         <SheetTitle className="sr-only">{t("mobileTitle")}</SheetTitle>
         <SheetDescription className="sr-only">{t("mobileDescription")}</SheetDescription>
         <div className="mt-12 mb-8"><Brand onNavigate={() => setOpen(false)} /></div>
-        <Navigation onNavigate={() => setOpen(false)} />
+        <Navigation role={role} onNavigate={() => setOpen(false)} />
       </SheetContent>
     </Sheet>
   );

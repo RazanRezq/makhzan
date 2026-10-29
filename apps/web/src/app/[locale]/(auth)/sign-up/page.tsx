@@ -29,7 +29,7 @@ export default async function SignUpPage({
     getServerSession(),
     getTranslations({ locale, namespace: "Auth" }),
   ]);
-  if (session) redirect(`/${locale}/pending-setup`);
+  if (session) redirect(`/${locale}`);
 
   return (
     <AuthShell title={t("signUp.title")} description={t("signUp.description")}>

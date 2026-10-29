@@ -22,6 +22,7 @@
     "test:http": "npm run test:http --workspace=apps/web",
     "test:db": "npm run test:db --workspace=apps/web",
     "test:auth": "npm run test:auth --workspace=apps/web",
+    "test:tenancy": "npm run test:tenancy --workspace=apps/web",
     "test:watch": "npm run test:watch --workspace=apps/web",
     "db:generate": "npm run db:generate --workspace=apps/web",
     "db:check": "npm run db:check --workspace=apps/web",

@@ -75,6 +75,11 @@ jobs:
         env:
           NODE_ENV: test
 
+      - name: Run Tenant Authorization Integration Tests
+        run: npm run test:tenancy
+        env:
+          NODE_ENV: test
+
       - name: Build production application
         run: npm run build
         env:

@@ -14,6 +14,7 @@
     "test:http": "vitest run --config vitest.http.config.mts",
     "test:db": "vitest run --config vitest.db.config.mts",
     "test:auth": "vitest run --config vitest.auth.config.mts",
+    "test:tenancy": "vitest run --config vitest.tenancy.config.mts",
     "test:watch": "vitest --config vitest.unit.config.mts",
     "db:generate": "drizzle-kit generate",
     "db:check": "drizzle-kit check",

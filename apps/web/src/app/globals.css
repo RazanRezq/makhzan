@@ -17,6 +17,7 @@
   --border: #dce4df;
   --input: #dce4df;
   --ring: #337a60;
+  --destructive: #b42318;
   --sidebar: #ffffff;
   --hero: #eaf2ed;
   --overlay: #10251dcc;
@@ -44,6 +45,7 @@
   --color-border: var(--border);
   --color-input: var(--input);
   --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
   --color-sidebar: var(--sidebar);
   --color-hero: var(--hero);
   --color-overlay: var(--overlay);
@@ -72,6 +74,7 @@
     --border: #34473a;
     --input: #34473a;
     --ring: #9ed6b8;
+    --destructive: #ffb4ab;
     --sidebar: #17211b;
     --hero: #20372a;
   }

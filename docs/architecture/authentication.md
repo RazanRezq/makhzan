@@ -1,8 +1,9 @@
 # Authentication architecture
 
-**Scope:** Sprint 02 Group B. User identity only. Tenant membership, RBAC,
-organization management, tenant switching, and business-data authorization are
-deferred.
+**Scope:** Sprint 02 Group B identity/session management, integrated with the
+Group C [tenant architecture](tenancy.md). Better Auth owns identity; Makhzan owns
+membership, RBAC, and tenant selection. Invitations and organization management
+beyond first-company onboarding remain deferred.
 
 ## Runtime
 
@@ -44,11 +45,10 @@ and production abuse controls. No fake email transport is present.
 The registration endpoint disables automatic sign-in so duplicate email
 requests receive Better Auth's non-enumerating response. The development UI
 then signs in with the submitted credentials and routes a newly created user to
-the company-setup-pending page.
+the localized company-onboarding page.
 
 Email verification and password recovery are intentionally unavailable in Group
-B because no email provider is configured. Social login, MFA, SSO, tenant
-membership, and RBAC are also deferred.
+B because no email provider is configured. Social login, MFA, and SSO remain deferred.
 
 ## Access policy
 
@@ -58,11 +58,11 @@ produced. This page-level guard prevents Next.js parallel rendering from
 serializing child content before a layout redirect resolves. The optional
 synthetic Products API independently validates its session on every request.
 
-Authenticated users may view the identity-only shell and synthetic catalog.
-Those resources contain no tenant data. Authentication alone grants no tenant
-membership or access to business records. The post-registration
-`/[locale]/pending-setup` page records that boundary until company onboarding is
-implemented.
+Dashboard and synthetic catalog access now additionally require a current active
+tenant membership and active tenant selection. Authentication alone grants no
+tenant access. New users go to `/[locale]/onboarding`; members without a selection
+go to `/[locale]/select-company`. `pending-setup` is a compatibility redirect.
+Every page/API performs its own service check before producing protected content.
 
 The existing next-intl proxy remains routing-only and excludes all `/api/*`
 paths, so `/api/auth/*` is never locale-rewritten. Proxy cookie-presence checks

@@ -22,6 +22,20 @@
       "when": 1792849717050,
       "tag": "0002_cooing_hellcat",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793111362060,
+      "tag": "0003_regular_thunderbolts",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1793111383981,
+      "tag": "0004_tenant-context-triggers",
+      "breakpoints": true
     }
   ]
 }

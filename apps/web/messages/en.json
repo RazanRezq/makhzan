@@ -1,4 +1,43 @@
 {
+  "Tenancy": {
+    "companyOption": "{name}, {role}",
+    "onboardingTitle": "Create your company",
+    "onboardingDescription": "Set up your first company to start using your workspace.",
+    "selectionTitle": "Choose a company",
+    "selectionDescription": "Select the company you want to work with. Your selection applies to this browser session.",
+    "fields": {
+      "name": "Company name",
+      "currency": "Base currency",
+      "timezone": "Timezone"
+    },
+    "currencyHelp": "Use a supported three-letter currency code, such as AED, SAR or KWD.",
+    "timezoneHelp": "Use a timezone such as Asia/Dubai or UTC.",
+    "create": "Create company",
+    "saving": "Saving…",
+    "current": "Current",
+    "switchCompany": "Choose or switch company",
+    "refresh": "Refresh and try again",
+    "newAttempt": "Start a new submission",
+    "noAccess": "No active company membership is available. Contact your company owner for access.",
+    "roles": {
+      "OWNER": "Owner",
+      "MANAGER": "Manager",
+      "STAFF": "Staff",
+      "VIEWER": "Viewer"
+    },
+    "errors": {
+      "UNAUTHENTICATED": "Your session has expired. Sign in again.",
+      "INVALID_INPUT": "Check the company name, currency and timezone.",
+      "NO_TENANT": "Choose a company to continue.",
+      "FORBIDDEN": "You do not have access to this company or operation.",
+      "STALE_CONTEXT": "The active company changed in another tab. Refresh before continuing.",
+      "ALREADY_MEMBER": "You already have a company membership. Choose your company to continue.",
+      "IDEMPOTENCY_CONFLICT": "This submission was already used with different details. Retry the original details or start a new submission.",
+      "RATE_LIMITED": "Too many company creation attempts. Wait ten minutes before starting another submission.",
+      "FINAL_OWNER": "A company must retain at least one active owner.",
+      "UNAVAILABLE": "We could not confirm the result. Retry with the same details to safely recover."
+    }
+  },
   "Brand": {
     "name": "Makhzan",
     "tagline": "Everything in its place",

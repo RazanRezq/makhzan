@@ -16,13 +16,15 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { requireServerSession } from "@/server/auth/session";
+import { requireTenantPage } from "@/server/tenants/page-access";
+
+export const instant = false;
 
 export default async function OverviewPage({
   params,
 }: PageProps<"/[locale]">) {
   const { locale } = await params;
-  await requireServerSession(locale);
+  await requireTenantPage(locale, "dashboard.read");
   const t = await getTranslations("Overview");
   const tools = [
     {

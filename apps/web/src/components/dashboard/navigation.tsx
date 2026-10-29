@@ -4,8 +4,16 @@ import { useTranslations } from "next-intl";
 import { Link, usePathname } from "@/i18n/navigation";
 import { navigationItems } from "@/lib/navigation";
 import { cn } from "@/lib/utils";
+import { hasPermission } from "@/lib/tenancy/permissions";
+import type { TenantPermission, TenantRole } from "@/lib/tenancy/permissions";
 
-export function Navigation({ onNavigate }: { onNavigate?: () => void }) {
+const navigationPermissions: Partial<Record<(typeof navigationItems)[number]["key"], TenantPermission>> = {
+  overview: "dashboard.read", products: "demoProducts.read", inventory: "inventory.read",
+  purchases: "purchaseOrders.read", sales: "salesOrders.read", warehouses: "warehouses.read",
+  reports: "reports.read", settings: "tenantSettings.read",
+};
+
+export function Navigation({ onNavigate, role }: { onNavigate?: () => void; role: TenantRole }) {
   const t = useTranslations("Navigation");
   const pathname = usePathname();
 
@@ -17,7 +25,7 @@ export function Navigation({ onNavigate }: { onNavigate?: () => void }) {
             {t(group)}
           </p>
           <ul className="space-y-1">
-            {navigationItems.filter((item) => item.group === group).map((item) => {
+            {navigationItems.filter((item) => item.group === group && (!navigationPermissions[item.key] || hasPermission(role, navigationPermissions[item.key]!))).map((item) => {
               const Icon = item.icon;
               const active = item.href !== null && pathname === item.href;
               const className = cn(

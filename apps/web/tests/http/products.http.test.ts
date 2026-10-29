@@ -1,6 +1,7 @@
 import { spawn } from "node:child_process";
 import { once } from "node:events";
-import { rm, writeFile } from "node:fs/promises";
+import { readFile, rm, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
 import { createServer } from "node:net";
 import path from "node:path";
 import { createRequire } from "node:module";
@@ -11,6 +12,8 @@ import { Pool } from "pg";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { ChildProcess } from "node:child_process";
 import * as schema from "@/server/db/schema";
+import type { AuthSession } from "@/server/auth/auth";
+import type { ActionManifest } from "next/dist/build/webpack/plugins/flight-client-entry-plugin";
 
 type RunningServer = {
   baseUrl: string;
@@ -53,6 +56,7 @@ let enabledServer: RunningServer | undefined;
 let disabledServer: RunningServer | undefined;
 let authenticatedCookie: string | undefined;
 let privateTenantId: string;
+let memberTenantId: string;
 const PRIVATE_PRODUCT_SKU = "PRIVATE-TENANT-PRODUCT";
 
 function nextEnvironment(
@@ -162,8 +166,8 @@ async function stopServer(server: RunningServer | undefined) {
   }
 }
 
-async function authenticate(server: RunningServer) {
-  const email = `http-${process.pid}@example.test`;
+async function authenticate(server: RunningServer, withCompany = true, suffix = "") {
+  const email = `http-${process.pid}${suffix}@example.test`;
   const headers = { "Content-Type": "application/json", Origin: server.baseUrl };
   const registration = await fetch(`${server.baseUrl}/api/auth/sign-up/email`, {
     method: "POST",
@@ -185,7 +189,33 @@ async function authenticate(server: RunningServer) {
     .map((value) => value.split(";", 1)[0])
     .filter((value): value is string => Boolean(value));
   if (cookies.length === 0) throw new Error("HTTP test login set no session cookie.");
-  return cookies.join("; ");
+  const cookie = cookies.join("; ");
+  if (withCompany) {
+    const sessionResponse = await fetch(`${server.baseUrl}/api/auth/get-session`, { headers: { Cookie: cookie } });
+    const identity = await sessionResponse.json() as AuthSession;
+    const existing = await pool.query<{ tenant_id: string }>("select tenant_id from tenant_memberships where user_id=$1", [identity.user.id]);
+    if (existing.rows[0]) memberTenantId = existing.rows[0].tenant_id;
+    else {
+      const tenant = await pool.query<{ id: string }>("insert into tenants(name,base_currency) values ('HTTP Authorized Company','AED') returning id");
+      memberTenantId = tenant.rows[0]!.id;
+      await pool.query("insert into tenant_memberships(tenant_id,user_id,role) values ($1,$2,'OWNER')", [memberTenantId,identity.user.id]);
+    }
+    await pool.query("insert into session_tenant_context(session_id,tenant_id) values ($1,$2)", [identity.session.id,memberTenantId]);
+  }
+  return cookie;
+}
+
+async function action(name: string, route: string, input: unknown, cookie: string, origin?: string) {
+  if (!enabledServer) throw new Error("Test server unavailable.");
+  const manifest = JSON.parse(await readFile(path.join(distDirectory, "server/server-reference-manifest.json"), "utf8")) as ActionManifest;
+  const id = Object.entries(manifest.node).find(([, entry]) => entry.exportedName === name)?.[0];
+  if (!id) throw new Error(`Missing real Next.js Server Action: ${name}`);
+  return fetch(`${enabledServer.baseUrl}${route}`, {
+    method: "POST", headers: {
+      "Next-Action": id, "Content-Type": "text/plain;charset=UTF-8", Accept: "text/x-component",
+      Origin: origin ?? enabledServer.baseUrl, Cookie: cookie,
+    }, body: JSON.stringify([input]), redirect: "manual",
+  });
 }
 
 beforeAll(async () => {
@@ -406,5 +436,117 @@ describe("protected content security boundaries", () => {
     const html = await page.text();
     expect(html).not.toContain("BEV-WAT-001");
     expect(html).toContain("NEXT_REDIRECT;replace;/en/sign-in;307;");
+  });
+});
+
+describe("company onboarding and active-context HTTP boundaries", () => {
+  it.each(["en", "ar"])("requires a session for /%s/onboarding and selection", async (locale) => {
+    for (const route of ["onboarding", "select-company"]) {
+      const response = await fetch(`${enabledServer?.baseUrl}/${locale}/${route}`);
+      const html = await response.text();
+      expect(html).toContain(`NEXT_REDIRECT;replace;/${locale}/sign-in;307;`);
+      expect(html).not.toContain("HTTP Authorized Company");
+    }
+  });
+
+  it("blocks authenticated users without membership from both catalog and Dashboard", async () => {
+    if (!enabledServer) throw new Error("Test server unavailable.");
+    const cookie = await authenticate(enabledServer, false, "-no-company");
+    const api = await fetch(`${enabledServer.baseUrl}/api/products`, { headers: { Cookie: cookie } });
+    expect(api.status).toBe(403);
+    for (const locale of ["en", "ar"]) {
+      const page = await fetch(`${enabledServer.baseUrl}/${locale}/products`, { headers: { Cookie: cookie } });
+      const html = await page.text();
+      expect(html).not.toContain("BEV-WAT-001");
+      expect(html).toContain(`NEXT_REDIRECT;replace;/${locale}/onboarding;307;`);
+      const onboarding = await fetch(`${enabledServer.baseUrl}/${locale}/onboarding`, { headers: { Cookie: cookie } });
+      expect(onboarding.status).toBe(200);
+      expect(await onboarding.text()).toContain(locale === "ar" ? "أنشئ شركتك" : "Create your company");
+    }
+  });
+
+  it("creates a company through the real Server Action and safely replays the result", async () => {
+    if (!enabledServer) throw new Error("Test server unavailable.");
+    const cookie = await authenticate(enabledServer, false, "-onboarding-action");
+    const input = { name: "Action Company", baseCurrency: "AED", timezone: "Asia/Dubai", operationId: randomUUID() };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await action("createCompanyAction", "/en/onboarding", input, cookie);
+      expect(response.status).toBe(200);
+      expect(await response.text()).toContain('"ok":true');
+    }
+    const companies = await pool.query<{ count: number }>("select count(*)::int count from tenants where name='Action Company'");
+    expect(companies.rows[0]!.count).toBe(1);
+    const page = await fetch(`${enabledServer.baseUrl}/ar/products`, { headers: { Cookie: cookie } });
+    const html = await page.text();
+    expect(html).toContain("Action Company");
+    expect(html).toContain("BEV-WAT-001");
+    expect(html).toContain('dir="rtl"');
+    // Alternate sessions against the same route on the same Next.js process.
+    // Neither Server Component output nor authorization may be shared by tenant.
+    for (const locale of ["en", "ar"]) {
+      for (const [sessionCookie, ownName, otherName] of [
+        [cookie, "Action Company", "HTTP Authorized Company"],
+        [authenticatedCookie ?? "", "HTTP Authorized Company", "Action Company"],
+        [cookie, "Action Company", "HTTP Authorized Company"],
+      ]) {
+        const response = await fetch(`${enabledServer.baseUrl}/${locale}/products`, {
+          headers: { Cookie: sessionCookie! },
+        });
+        const body = await response.text();
+        expect(response.status).toBe(200);
+        expect(body).toContain(ownName);
+        expect(body).not.toContain(otherName);
+        expect(body).not.toContain(PRIVATE_PRODUCT_SKU);
+        expect(response.headers.get("cache-control")).toContain("no-store");
+      }
+    }
+  });
+
+  it("enforces authentication, input validation, and CSRF on onboarding actions", async () => {
+    const input = { name: "Rejected", baseCurrency: "AED", timezone: "Asia/Dubai", operationId: randomUUID() };
+    const unauthenticated = await action("createCompanyAction", "/en/onboarding", input, "");
+    expect(await unauthenticated.text()).toContain("UNAUTHENTICATED");
+    const invalid = await action("createCompanyAction", "/en/onboarding", { ...input, role: "OWNER" }, authenticatedCookie ?? "");
+    expect(await invalid.text()).toContain("INVALID_INPUT");
+    const hostile = await action("createCompanyAction", "/en/onboarding", input, authenticatedCookie ?? "", "https://hostile.example");
+    expect(hostile.status).toBeGreaterThanOrEqual(400);
+    const companies = await pool.query<{ count: number }>("select count(*)::int count from tenants where name='Rejected'");
+    expect(companies.rows[0]!.count).toBe(0);
+  });
+
+  it("rejects forged selection and stale selection versions over HTTP", async () => {
+    const forged = await action("selectCompanyAction", "/en/select-company", { tenantId: privateTenantId, expectedVersion: 1 }, authenticatedCookie ?? "");
+    expect(await forged.text()).toContain("FORBIDDEN");
+    const selected = await action("selectCompanyAction", "/en/select-company", { tenantId: memberTenantId, expectedVersion: 1 }, authenticatedCookie ?? "");
+    expect(await selected.text()).toContain('"ok":true');
+    const stale = await action("selectCompanyAction", "/en/select-company", { tenantId: memberTenantId, expectedVersion: 1 }, authenticatedCookie ?? "");
+    expect(await stale.text()).toContain("STALE_CONTEXT");
+  });
+
+  it("requires explicit selection in a fresh session and immediately denies revoked access", async () => {
+    if (!enabledServer) throw new Error("Test server unavailable.");
+    const cookie = await authenticate(enabledServer, false, "-selection");
+    const response = await fetch(`${enabledServer.baseUrl}/api/auth/get-session`, { headers: { Cookie: cookie } });
+    const identity = await response.json() as AuthSession;
+    await pool.query("insert into tenant_memberships(tenant_id,user_id,role) values ($1,$2,'VIEWER')", [memberTenantId, identity.user.id]);
+    const blocked = await fetch(`${enabledServer.baseUrl}/en/products`, { headers: { Cookie: cookie } });
+    expect(await blocked.text()).toContain("NEXT_REDIRECT;replace;/en/select-company;307;");
+    for (const locale of ["en", "ar"]) {
+      const selection = await fetch(`${enabledServer.baseUrl}/${locale}/select-company`, { headers: { Cookie: cookie } });
+      const html = await selection.text();
+      expect(html).toContain("HTTP Authorized Company");
+      expect(html).not.toContain("Private test business");
+    }
+    const selected = await action("selectCompanyAction", "/en/select-company", { tenantId: memberTenantId, expectedVersion: 0 }, cookie);
+    expect(await selected.text()).toContain('"ok":true');
+    const allowed = await fetch(`${enabledServer.baseUrl}/api/products`, { headers: { Cookie: cookie } });
+    expect(allowed.status).toBe(200);
+    await pool.query("update tenant_memberships set status='INACTIVE' where tenant_id=$1 and user_id=$2", [memberTenantId,identity.user.id]);
+    const revoked = await fetch(`${enabledServer.baseUrl}/api/products`, { headers: { Cookie: cookie } });
+    expect(revoked.status).toBe(403);
+    const page = await fetch(`${enabledServer.baseUrl}/ar/products`, { headers: { Cookie: cookie } });
+    const html = await page.text();
+    expect(html).not.toContain("BEV-WAT-001");
+    expect(html).not.toContain("HTTP Authorized Company");
   });
 });

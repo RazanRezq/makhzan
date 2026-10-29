@@ -1,8 +1,8 @@
 # Database architecture
 
-**Scope:** Sprint 02 Group A database foundation plus Group B Better Auth-owned
-identity tables. RLS, tenant membership, product CRUD, stock, orders, and
-database-backed product UI remain outside this scope.
+**Scope:** Sprint 02 Groups A–C: database foundation, Better Auth identity tables,
+tenant memberships, and active company context. RLS, product CRUD, stock, orders,
+and database-backed product UI remain outside this scope.
 
 ## Entity relationships
 
@@ -17,6 +17,12 @@ non-null `tenant_id`; product and warehouse tables also expose unique
 `(tenant_id, id)` pairs for future composite tenant-safe foreign keys.
 
 ## Tables
+
+Group C adds `tenant_memberships`, `session_tenant_context`, `onboarding_requests`,
+and `tenant_creation_rate_limits`. Their constraints, bootstrap-query exceptions,
+onboarding transactions, rate/retry semantics, and authorization boundaries are
+documented in [tenant architecture](tenancy.md). Migrations `0003_regular_thunderbolts`
+and `0004_tenant-context-triggers` are additive and preserve existing records.
 
 Better Auth owns `user`, `session`, `account`, `verification`, and `rate_limit`.
 They intentionally have no `tenant_id`: they store identity and authentication
@@ -105,13 +111,13 @@ timestamp updates.
 
 ## Known limitations and deferred decisions
 
-- Tenant filters are required in application queries. Identity authentication is
-  implemented, but tenant memberships, authorization, and PostgreSQL RLS are not.
+- Tenant filters and service authorization are required in business queries.
+  Identity, memberships, and RBAC are implemented; PostgreSQL RLS is deferred.
 - Future stock tables must reference products and warehouses with composite
   `(tenant_id, resource_id)` foreign keys.
 - No product/category/unit CRUD or seed data exists in Group A; the dashboard
   continues using its synthetic server-only service.
 - B-tree indexes cover known tenant access patterns. Full-text/trigram search,
   partitioning, replicas, and advanced pooling require measured demand.
-- A later membership design will reference Better Auth's user identifier without
-  duplicating or modifying the authentication schema.
+- Memberships reference Better Auth's text user identifier without duplicating or
+  modifying the authentication schema. Company IDs remain PostgreSQL UUIDs.

@@ -108,7 +108,7 @@ export function AuthForm({ mode }: { mode: AuthMode }) {
           setFormError(t("errors.registration"));
           return;
         }
-        router.replace("/pending-setup");
+        router.replace("/onboarding");
       } else {
         const credentials = signInInputSchema.parse(input);
         const signIn = await authClient.signIn.email({

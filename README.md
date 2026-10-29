@@ -6,8 +6,8 @@ platform for small and medium businesses in the MENA region.
 The current application is a single Next.js App Router workspace at `apps/web`.
 Its dashboard supports English and Arabic and includes a read-only product
 catalog backed by synthetic demo data. Better Auth provides email/password
-identity and database-backed sessions; tenant membership, RBAC, onboarding, and
-product mutations are not implemented yet.
+identity and database-backed sessions. Company onboarding, tenant memberships,
+RBAC, and company selection protect the workspace. Product mutations are deferred.
 
 ## Prerequisites and first checkout
 
@@ -200,6 +200,7 @@ Run the isolated real-PostgreSQL suite with:
 docker compose --profile database-test up -d --wait postgres-test
 docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:db
 docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:auth
+docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:tenancy
 docker compose --profile database-test rm -sf postgres-test
 ```
 
@@ -229,6 +230,7 @@ docker compose --profile database-test up -d --wait postgres-test
 docker compose run --rm --no-deps web sh -c "npm run typecheck && npm run lint && npm run test:unit"
 docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:db
 docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:auth
+docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:tenancy
 docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:http
 docker compose run --rm --no-deps -e NODE_ENV=production -e BETTER_AUTH_SECRET=synthetic-build-secret-at-least-32-characters -e BETTER_AUTH_URL=https://build.invalid -e AUTH_TRUSTED_ORIGINS=https://build.invalid web npm run build
 docker compose --profile database-test rm -sf postgres-test
@@ -247,7 +249,7 @@ docker compose run --rm --no-deps web npm run benchmark:products
 `npm test` runs the Unit/Component suite followed by the HTTP suite. The guarded
 database and authentication suites are separate because they require PostgreSQL.
 Individual commands are `npm run test:unit`, `npm run test:http`,
-`npm run test:db`, `npm run test:auth`, and
+`npm run test:db`, `npm run test:auth`, `npm run test:tenancy`, and
 `npm run test:watch`.
 Missing test files fail rather than being silently skipped. Existing
 development-tool audit findings must be reviewed separately; do not use
@@ -257,7 +259,7 @@ development-tool audit findings must be reviewed separately; do not use
 
 GitHub Actions runs `npm ci`, the full dependency audit (blocking high/critical
 findings while reporting moderate findings), migration consistency, typecheck,
-ESLint, Unit/Component tests, database and authentication integration tests,
+ESLint, Unit/Component tests, database, authentication, and tenant authorization integration tests,
 a production build, and real HTTP integration tests for every push and pull request. PostgreSQL is an
 isolated CI service with synthetic credentials. The workflow uses the Node.js version in
 `.nvmrc` and caches npm downloads using the root lockfile; it does not cache
@@ -313,10 +315,14 @@ hard-disabled until a real email provider, email verification, password
 recovery, and production abuse controls are configured. Sign-in remains
 available for pre-provisioned accounts.
 
-Authenticated users can access only the identity-level shell and synthetic demo
-catalog. Authentication does not grant tenant membership or permission to real
-business data. New development accounts land on `/[locale]/pending-setup` until
-company onboarding is implemented. See
+Dashboard and the synthetic demo catalog require an active company membership and
+selection. New accounts land on `/[locale]/onboarding`, which atomically creates
+their first company and OWNER membership. Users with any membership, including an
+inactive one, cannot create another company through initial onboarding. Members
+choose a company at `/[locale]/select-company`; no company is selected implicitly.
+The header shows the active company/role and links to the selector. Switching is
+session-scoped, with version checks rejecting stale-tab mutations. Existing
+companies are never automatically claimed. See [tenant architecture](docs/architecture/tenancy.md) and
 [`docs/architecture/authentication.md`](docs/architecture/authentication.md).
 
 ## Troubleshooting

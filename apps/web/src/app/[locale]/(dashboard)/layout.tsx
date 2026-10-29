@@ -3,6 +3,7 @@ import { getTranslations } from "next-intl/server";
 import { Header } from "@/components/dashboard/header";
 import { Sidebar } from "@/components/dashboard/sidebar";
 import { getServerSession } from "@/server/auth/session";
+import { requireTenantPage } from "@/server/tenants/page-access";
 
 export const instant = false;
 
@@ -16,6 +17,7 @@ export default async function DashboardLayout({
     getTranslations("Shell"),
   ]);
   if (!session) redirect(`/${locale}/sign-in`);
+  const tenant = await requireTenantPage(locale, "dashboard.read");
 
   return (
     <div className="min-h-dvh">
@@ -25,9 +27,9 @@ export default async function DashboardLayout({
       >
         {t("skip")}
       </a>
-      <Sidebar />
+      <Sidebar role={tenant.role} />
       <div className="flex min-h-dvh min-w-0 flex-col lg:ps-64">
-        <Header userName={session.user.name} />
+        <Header userName={session.user.name} companyName={tenant.name} role={tenant.role} />
         <main id="main-content" tabIndex={-1} className="mx-auto min-w-0 w-full max-w-7xl flex-1 px-4 py-8 sm:px-8 lg:py-10">
           {children}
         </main>

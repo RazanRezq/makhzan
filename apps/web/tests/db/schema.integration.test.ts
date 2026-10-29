@@ -134,9 +134,13 @@ describe("database migrations", () => {
     );
     expect(tables.rows.map(({ table_name }) => table_name)).toEqual([
       "account",
+      "onboarding_requests",
       "products",
       "rate_limit",
       "session",
+      "session_tenant_context",
+      "tenant_creation_rate_limits",
+      "tenant_memberships",
       "tenants",
       "user",
       "verification",
@@ -183,6 +187,9 @@ describe("database migrations", () => {
     );
     expect(triggers.rows.map(({ trigger_name }) => trigger_name)).toEqual([
       "products_set_updated_at",
+      "session_tenant_context_increment_version",
+      "session_tenant_context_set_updated_at",
+      "tenant_memberships_set_updated_at",
       "tenants_set_updated_at",
       "warehouses_set_updated_at",
     ]);
