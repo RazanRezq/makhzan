@@ -1,225 +1,582 @@
 // @vitest-environment jsdom
 
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, within } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  render,
+  screen,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { NextIntlClientProvider } from "next-intl";
+import { DirectionProvider } from "@/components/ui/direction";
 import englishMessages from "../../../../messages/en.json";
-import { mockProducts } from "@/server/products/mock-products";
-import type { Product } from "@/lib/products/product.types";
+import arabicMessages from "../../../../messages/ar.json";
+import type {
+  ProductListItem,
+  ProductListResult,
+} from "@/lib/products/catalog.types";
 import { ProductsTable } from "./products-table";
 
-const router = vi.hoisted(() => ({ refresh: vi.fn() }));
-
-vi.mock("@/i18n/navigation", () => ({
-  useRouter: () => router,
+const mocks = vi.hoisted(() => ({
+  router: { replace: vi.fn(), refresh: vi.fn() },
+  create: vi.fn(),
+  update: vi.fn(),
+  archive: vi.fn(),
+  reactivate: vi.fn(),
 }));
+vi.mock("@/i18n/navigation", () => ({ useRouter: () => mocks.router }));
+vi.mock("../actions", () => ({
+  createProductAction: mocks.create,
+  updateProductAction: mocks.update,
+  archiveProductAction: mocks.archive,
+  reactivateProductAction: mocks.reactivate,
+}));
+
+const first: ProductListItem = {
+  id: "8ad9ae84-1d42-4b9a-bfb0-e376ed4cf253",
+  sku: "Z-002",
+  name: "Zulu Item",
+  categoryCode: "CUSTOM.ONE",
+  unitCode: "KG",
+  status: "ACTIVE",
+  createdAt: "2026-10-29T12:30:00.000Z",
+  updatedAt: "2026-10-29T12:30:00.000Z",
+};
+const second: ProductListItem = {
+  ...first,
+  id: "ed980ed7-a19f-4d25-8254-50bc0aa17181",
+  sku: "A-001",
+  name: "Alpha Item",
+};
+const defaultListing: ProductListResult = {
+  items: [first, second],
+  total: 102,
+  page: 2,
+  pageSize: 25,
+  pageCount: 5,
+  query: {
+    search: "",
+    category: "",
+    status: "ALL",
+    sort: "createdAt",
+    direction: "desc",
+    page: 2,
+    pageSize: 25,
+  },
+  contextVersion: 9,
+  canWrite: true,
+  timezone: "Asia/Dubai",
+};
 
 afterEach(() => {
   cleanup();
-  router.refresh.mockReset();
+  vi.resetAllMocks();
 });
 
-function renderProductsTable(
-  products: Product[] = mockProducts.map((product) => ({ ...product })),
+function renderTable(
+  change: Partial<ProductListResult> = {},
+  locale: "en" | "ar" = "en",
 ) {
-  return render(
-    <NextIntlClientProvider locale="en" messages={englishMessages}>
-      <ProductsTable products={products} locale="en" />
-    </NextIntlClientProvider>,
+  const listing = { ...defaultListing, ...change };
+  return render(tableView(listing, locale));
+}
+function tableView(listing: ProductListResult, locale: "en" | "ar" = "en") {
+  return (
+    <NextIntlClientProvider
+      locale={locale}
+      messages={locale === "ar" ? arabicMessages : englishMessages}
+    >
+      <DirectionProvider dir={locale === "ar" ? "rtl" : "ltr"}>
+        <ProductsTable listing={listing} locale={locale} />
+      </DirectionProvider>
+    </NextIntlClientProvider>
   );
 }
-
-function productTable() {
-  return screen.getByRole("table", {
-    name: "Products with category, unit, status, and creation date",
-  });
+function table() {
+  return screen.getByRole("table");
 }
-
-function visibleTableProductNames() {
-  return within(productTable())
+function rowNames() {
+  return within(table())
     .getAllByRole("row")
     .slice(1)
-    .map((row) => within(row).getAllByRole("cell")[1]?.textContent);
+    .map((row) => within(row).getAllByRole("cell")[2]?.textContent);
+}
+function lastQuery() {
+  const destination = mocks.router.replace.mock.lastCall?.[0];
+  expect(destination).toMatch(/^\/products\?/);
+  return new URL(String(destination), "http://localhost").searchParams;
 }
 
-function firstVisibleProductName() {
-  return visibleTableProductNames()[0];
-}
-
-describe("ProductsTable search and filtering", () => {
-  it("searches names case-insensitively after trimming whitespace", async () => {
-    const user = userEvent.setup();
-    renderProductsTable();
-
-    await user.type(screen.getByLabelText("Search products"), "  WATER  ");
-
-    expect(screen.getByText("2 products")).toBeTruthy();
-    expect(visibleTableProductNames()).toEqual([
-      "Still Water 500 ml",
-      "Sparkling Water 330 ml",
-    ]);
+describe("server-driven ProductsTable", () => {
+  it("keeps filters in two columns beside the sidebar until wide desktop", () => {
+    renderTable();
+    const filterForm = screen
+      .getByRole("button", { name: "Apply filters" })
+      .closest("form");
+    expect(filterForm?.className).toContain("sm:grid-cols-2");
+    expect(filterForm?.className).toContain(
+      "2xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,0.8fr)_auto]",
+    );
+    expect(filterForm?.className).not.toMatch(/\blg:grid-cols-\[/);
+    for (const label of ["Search products", "Category", "Status"])
+      expect(screen.getByLabelText(label).className).toContain("min-w-0");
   });
 
-  it("searches by SKU and shows a no-results state", async () => {
-    const user = userEvent.setup();
-    renderProductsTable();
-    const search = screen.getByLabelText("Search products");
-
-    await user.type(search, "pcr-san-001");
-    expect(visibleTableProductNames()).toEqual(["Hand Sanitizer 500 ml"]);
-
-    await user.clear(search);
-    await user.type(search, "does-not-exist");
-    expect(screen.getByRole("heading", { name: "No matching products" })).toBeTruthy();
-    expect(screen.getByText("0 products")).toBeTruthy();
+  it("shows only the supplied server page with the matching database total", () => {
+    const { container } = renderTable();
+    expect(rowNames()).toEqual(["Zulu Item", "Alpha Item"]);
+    expect(container.querySelectorAll("article")).toHaveLength(2);
+    expect(screen.getByText("102 products")).toBeTruthy();
+    expect(screen.getByText("Page 2 of 5")).toBeTruthy();
   });
 
-  it("combines category, status, and search filters and clears them", async () => {
+  it("submits trimmed search without filtering the loaded page or fetching while typing", async () => {
     const user = userEvent.setup();
-    renderProductsTable();
+    renderTable();
+    await user.type(screen.getByLabelText("Search products"), "  water  ");
+    expect(mocks.router.replace).not.toHaveBeenCalled();
+    expect(rowNames()).toEqual(["Zulu Item", "Alpha Item"]);
+    await user.click(screen.getByRole("button", { name: "Apply filters" }));
+    expect(lastQuery().get("search")).toBe("water");
+    expect(lastQuery().get("page")).toBe("1");
+  });
 
-    await user.selectOptions(screen.getByLabelText("Category"), "FOOD");
+  it("submits combined search, extensible category and status filters", async () => {
+    const user = userEvent.setup();
+    renderTable();
+    await user.type(screen.getByLabelText("Search products"), "SKU-5");
+    await user.type(screen.getByLabelText("Category"), "CUSTOM/TOOLS");
     await user.selectOptions(screen.getByLabelText("Status"), "INACTIVE");
-    await user.type(screen.getByLabelText("Search products"), "chickpeas");
-
-    expect(visibleTableProductNames()).toEqual(["Canned Chickpeas"]);
-
-    await user.click(screen.getByRole("button", { name: "Clear filters" }));
-    expect(screen.getByText("42 products")).toBeTruthy();
-    expect(screen.getByLabelText("Category")).toHaveProperty("value", "");
-    expect(screen.getByLabelText("Status")).toHaveProperty("value", "");
-    expect(screen.getByLabelText("Search products")).toHaveProperty("value", "");
-  });
-});
-
-describe("ProductsTable sorting", () => {
-  it("sorts name, SKU, and creation date in both directions", async () => {
-    const user = userEvent.setup();
-    renderProductsTable();
-    const sort = screen.getByLabelText("Sort by");
-
-    await user.selectOptions(sort, "name-asc");
-    expect(firstVisibleProductName()).toBe("A4 Copy Paper");
-    await user.selectOptions(sort, "name-desc");
-    expect(firstVisibleProductName()).toBe("Thermal Shipping Labels");
-
-    await user.selectOptions(sort, "sku-asc");
-    expect(firstVisibleProductName()).toBe("Arabic Coffee Blend");
-    await user.selectOptions(sort, "sku-desc");
-    expect(firstVisibleProductName()).toBe("Bubble Wrap Roll");
-
-    await user.selectOptions(sort, "createdAt-asc");
-    expect(firstVisibleProductName()).toBe("Still Water 500 ml");
-    await user.selectOptions(sort, "createdAt-desc");
-    expect(firstVisibleProductName()).toBe("Microfiber Cleaning Cloths");
+    await user.click(screen.getByRole("button", { name: "Apply filters" }));
+    expect(Object.fromEntries(lastQuery())).toMatchObject({
+      search: "SKU-5",
+      category: "CUSTOM/TOOLS",
+      status: "INACTIVE",
+      page: "1",
+    });
   });
 
-  it("preserves input order as the tie-breaker for equal values", async () => {
+  it("requests all six supported sort orders and leaves global ordering to PostgreSQL", async () => {
     const user = userEvent.setup();
-    const tiedProducts: Product[] = [
-      { ...mockProducts[0], id: "tie-1", sku: "TIE-002", name: "Same" },
-      { ...mockProducts[1], id: "tie-2", sku: "TIE-001", name: "Same" },
-      { ...mockProducts[2], id: "tie-3", sku: "TIE-003", name: "After" },
-    ];
-    renderProductsTable(tiedProducts);
-
-    await user.selectOptions(screen.getByLabelText("Sort by"), "name-asc");
-
-    const rows = within(productTable()).getAllByRole("row").slice(1);
-    const skus = rows.map(
-      (row) => within(row).getAllByRole("cell")[2]?.textContent,
-    );
-    expect(skus).toEqual(["TIE-003", "TIE-002", "TIE-001"]);
-  });
-});
-
-describe("ProductsTable pagination and selection", () => {
-  it("uses correct first, last, and selectable page sizes", async () => {
-    const user = userEvent.setup();
-    const { container } = renderProductsTable();
-    const previous = screen.getByRole("button", { name: "Previous page" });
-    const next = screen.getByRole("button", { name: "Next page" });
-
-    expect(previous).toHaveProperty("disabled", true);
-    expect(visibleTableProductNames()).toHaveLength(10);
-    expect(container.querySelectorAll("article")).toHaveLength(10);
-
-    await user.click(next);
-    await user.click(next);
-    await user.click(next);
-    await user.click(next);
-    expect(screen.getByText("Page 5 of 5")).toBeTruthy();
-    expect(visibleTableProductNames()).toHaveLength(2);
-    expect(next).toHaveProperty("disabled", true);
-
-    await user.selectOptions(screen.getByLabelText("Rows per page"), "25");
-    expect(screen.getByText("Page 2 of 2")).toBeTruthy();
-    expect(visibleTableProductNames()).toHaveLength(17);
-
-    await user.click(previous);
-    expect(screen.getByText("Page 1 of 2")).toBeTruthy();
-    expect(visibleTableProductNames()).toHaveLength(25);
+    renderTable();
+    for (const option of [
+      "name-asc",
+      "name-desc",
+      "sku-asc",
+      "sku-desc",
+      "createdAt-asc",
+      "createdAt-desc",
+    ]) {
+      await user.selectOptions(screen.getByLabelText("Sort by"), option);
+      const [sort, direction] = option.split("-");
+      expect(lastQuery().get("sort")).toBe(sort);
+      expect(lastQuery().get("direction")).toBe(direction);
+      expect(lastQuery().get("page")).toBe("1");
+      expect(rowNames()).toEqual(["Zulu Item", "Alpha Item"]);
+    }
   });
 
-  it("resets an invalid page when filtering reduces the result", async () => {
+  it("offers accessible sortable headers and preserves server tie ordering", async () => {
     const user = userEvent.setup();
-    renderProductsTable();
-    const next = screen.getByRole("button", { name: "Next page" });
-
-    await user.click(next);
-    await user.click(next);
-    await user.click(next);
-    await user.click(next);
-    expect(screen.getByText("Page 5 of 5")).toBeTruthy();
-
-    await user.type(screen.getByLabelText("Search products"), "water");
-    expect(screen.getByText("Page 1 of 1")).toBeTruthy();
-    expect(visibleTableProductNames()).toHaveLength(2);
-  });
-
-  it("keeps ID-based selection across sorting, pages, and temporary filters", async () => {
-    const user = userEvent.setup();
-    renderProductsTable();
-    const table = productTable();
-
+    renderTable({
+      items: [
+        { ...first, name: "Same" },
+        { ...second, name: "Same" },
+      ],
+    });
     await user.click(
-      within(table).getByRole("checkbox", {
-        name: "Select Still Water 500 ml",
-      }),
+      within(table()).getByRole("button", { name: "Name: A to Z" }),
     );
-    expect(screen.getByText("1 selected")).toBeTruthy();
+    expect(lastQuery().get("sort")).toBe("name");
+    const skus = within(table())
+      .getAllByRole("row")
+      .slice(1)
+      .map((row) => within(row).getAllByRole("cell")[1]?.textContent);
+    expect(skus).toEqual(["Z-002", "A-001"]);
+  });
 
+  it("requests previous/next pages and resets page size changes to page one", async () => {
+    const user = userEvent.setup();
+    renderTable();
     await user.click(screen.getByRole("button", { name: "Next page" }));
-    const secondPageFirstProduct = visibleTableProductNames()[0];
-    expect(secondPageFirstProduct).toBeTruthy();
+    expect(lastQuery().get("page")).toBe("3");
+    await user.click(screen.getByRole("button", { name: "Previous page" }));
+    expect(lastQuery().get("page")).toBe("1");
+    await user.selectOptions(screen.getByLabelText("Rows per page"), "50");
+    expect(lastQuery().get("pageSize")).toBe("50");
+    expect(lastQuery().get("page")).toBe("1");
+  });
+
+  it("disables boundary pagination controls on first and last pages", () => {
+    const firstPage = renderTable({
+      page: 1,
+      query: { ...defaultListing.query, page: 1 },
+    });
+    expect(
+      screen.getByRole("button", { name: "Previous page" }),
+    ).toHaveProperty("disabled", true);
+    firstPage.unmount();
+    renderTable({ page: 5, query: { ...defaultListing.query, page: 5 } });
+    expect(screen.getByRole("button", { name: "Next page" })).toHaveProperty(
+      "disabled",
+      true,
+    );
+  });
+
+  it("uses stable UUID selection for only the loaded page and clears on navigation", async () => {
+    const user = userEvent.setup();
+    renderTable();
     await user.click(
-      within(table).getByRole("checkbox", {
-        name: `Select ${secondPageFirstProduct}`,
+      within(table()).getByRole("checkbox", { name: "Select Zulu Item" }),
+    );
+    expect(screen.getByText("1 selected on this page")).toBeTruthy();
+    await user.click(
+      within(table()).getByRole("checkbox", {
+        name: "Select all products on this page",
       }),
     );
-    expect(screen.getByText("2 selected")).toBeTruthy();
+    expect(screen.getByText("2 selected on this page")).toBeTruthy();
+    expect(
+      screen.getByText(englishMessages.Products.selection.pageOnly),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Next page" }));
+    expect(screen.getByText("0 selected on this page")).toBeTruthy();
+  });
 
-    await user.selectOptions(screen.getByLabelText("Sort by"), "name-desc");
-    expect(screen.getByText("2 selected")).toBeTruthy();
-
-    await user.type(screen.getByLabelText("Search products"), "Arabic Coffee");
-    expect(screen.getByText("2 selected")).toBeTruthy();
-
+  it("clears filters without changing the chosen page size and sort order", async () => {
+    const user = userEvent.setup();
+    renderTable({
+      query: {
+        ...defaultListing.query,
+        search: "nothing",
+        category: "TOOLS",
+        status: "ACTIVE",
+      },
+    });
     await user.click(screen.getByRole("button", { name: "Clear filters" }));
-    expect(screen.getByText("2 selected")).toBeTruthy();
+    expect(lastQuery().has("search")).toBe(false);
+    expect(lastQuery().has("category")).toBe(false);
+    expect(lastQuery().has("status")).toBe(false);
+    expect(lastQuery().get("page")).toBe("1");
+    expect(lastQuery().get("pageSize")).toBe("25");
+    expect(lastQuery().get("sort")).toBe("createdAt");
+  });
+
+  it("shows a true empty catalog with a writer CTA", async () => {
+    const user = userEvent.setup();
+    renderTable({ items: [], total: 0, page: 1, pageCount: 1 });
+    expect(
+      screen.getByRole("heading", { name: "No products yet" }),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Add product" }));
+    expect(
+      await screen.findByRole("dialog", { name: "Add product" }),
+    ).toBeTruthy();
+  });
+
+  it("distinguishes no matching results from an empty company catalog", () => {
+    renderTable({
+      items: [],
+      total: 0,
+      canWrite: false,
+      page: 1,
+      pageCount: 1,
+      query: { ...defaultListing.query, search: "missing" },
+    });
+    expect(
+      screen.getByRole("heading", { name: "No matching products" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("heading", { name: "No products yet" }),
+    ).toBeNull();
+  });
+
+  it("removes all functional write controls for STAFF/VIEWER listings", () => {
+    renderTable({ canWrite: false });
+    expect(screen.queryByRole("button", { name: "Add product" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Edit / })).toBeNull();
+    expect(screen.queryByRole("button", { name: /^Archive / })).toBeNull();
+  });
+
+  it("renders Arabic controls, Western digits, LTR identifiers and the supplied timezone", () => {
+    const { container } = renderTable(
+      {
+        items: [{ ...first, createdAt: "2026-10-29T00:30:00.000Z" }],
+        timezone: "America/New_York",
+      },
+      "ar",
+    );
+    expect(
+      screen.getByRole("button", { name: "تطبيق عوامل التصفية" }),
+    ).toBeTruthy();
+    expect(screen.getByText("102 منتج")).toBeTruthy();
+    expect(screen.getAllByText("Z-002")[0]?.className).toContain("text-ltr");
+    expect(container.querySelectorAll("article")).toHaveLength(1);
+    const rowText = within(table())
+      .getAllByRole("row")[1]
+      ?.textContent?.replace(/[\u200e\u200f]/g, "");
+    expect(rowText).toContain("28/10/2026");
+    expect(rowText).not.toMatch(/[٠-٩]/);
   });
 });
 
-describe("ProductsTable empty behavior", () => {
-  it("renders the empty state and refreshes on request", async () => {
+async function openCreate() {
+  const user = userEvent.setup();
+  renderTable();
+  await user.click(screen.getByRole("button", { name: "Add product" }));
+  const dialog = await screen.findByRole("dialog", { name: "Add product" });
+  return { user, dialog };
+}
+async function fillProduct(
+  user: ReturnType<typeof userEvent.setup>,
+  dialog: HTMLElement,
+) {
+  await user.type(within(dialog).getByLabelText("SKU"), "ｓｋｕ-００１");
+  await user.type(within(dialog).getByLabelText("Product name"), " New item ");
+  await user.type(within(dialog).getByLabelText("Category code"), "tools");
+  await user.type(within(dialog).getByLabelText("Unit code"), "box");
+}
+
+describe("Products mutations", () => {
+  it("validates all product fields before sending a mutation", async () => {
+    const { user, dialog } = await openCreate();
+    await user.click(
+      within(dialog).getByRole("button", { name: "Create product" }),
+    );
+    for (const field of ["sku", "name", "categoryCode", "unitCode"] as const)
+      expect(
+        within(dialog).getByText(englishMessages.Products.validation[field]),
+      ).toBeTruthy();
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it("sends canonical codes and context version, closes on success and uses the action's refresh", async () => {
+    mocks.create.mockResolvedValue({ ok: true, product: first });
+    const { user, dialog } = await openCreate();
+    await fillProduct(user, dialog);
+    await user.click(
+      within(dialog).getByRole("button", { name: "Create product" }),
+    );
+    await waitFor(() =>
+      expect(mocks.create).toHaveBeenCalledWith({
+        sku: "SKU-001",
+        name: "New item",
+        categoryCode: "TOOLS",
+        unitCode: "BOX",
+        expectedVersion: 9,
+      }),
+    );
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.getByText("Product created.")).toBeTruthy();
+    expect(mocks.router.refresh).not.toHaveBeenCalled();
+  });
+
+  it("shows a safe duplicate-SKU error without claiming success", async () => {
+    mocks.create.mockResolvedValue({ ok: false, code: "DUPLICATE_SKU" });
+    const { user, dialog } = await openCreate();
+    await fillProduct(user, dialog);
+    await user.click(
+      within(dialog).getByRole("button", { name: "Create product" }),
+    );
+    expect(
+      await screen.findByText(englishMessages.Products.errors.DUPLICATE_SKU),
+    ).toBeTruthy();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.queryByText("Product created.")).toBeNull();
+  });
+
+  it("disables submission while a mutation is pending", async () => {
+    let finish:
+      ((value: { ok: true; product: ProductListItem }) => void) | undefined;
+    mocks.create.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const { user, dialog } = await openCreate();
+    await fillProduct(user, dialog);
+    await user.click(
+      within(dialog).getByRole("button", { name: "Create product" }),
+    );
+    expect(
+      await screen.findByRole("button", { name: "Saving…" }),
+    ).toHaveProperty("disabled", true);
+    finish?.({ ok: true, product: first });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("loads existing values and preserves the product ID on edit", async () => {
+    mocks.update.mockResolvedValue({ ok: true, product: first });
     const user = userEvent.setup();
-    renderProductsTable([]);
+    renderTable();
+    await user.click(
+      within(table()).getByRole("button", { name: "Edit Zulu Item" }),
+    );
+    const dialog = await screen.findByRole("dialog", { name: "Edit product" });
+    expect(within(dialog).getByLabelText("SKU")).toHaveProperty(
+      "value",
+      "Z-002",
+    );
+    await user.clear(within(dialog).getByLabelText("Product name"));
+    await user.type(
+      within(dialog).getByLabelText("Product name"),
+      "Changed item",
+    );
+    await user.click(
+      within(dialog).getByRole("button", { name: "Save changes" }),
+    );
+    await waitFor(() =>
+      expect(mocks.update).toHaveBeenCalledWith({
+        id: first.id,
+        sku: first.sku,
+        name: "Changed item",
+        categoryCode: first.categoryCode,
+        unitCode: first.unitCode,
+        expectedVersion: 9,
+      }),
+    );
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
 
-    expect(screen.getByRole("heading", { name: "No products yet" })).toBeTruthy();
-    expect(screen.getByText("0 products")).toBeTruthy();
+  it("requires explicit archival confirmation and retains the context version", async () => {
+    mocks.archive.mockResolvedValue({
+      ok: true,
+      product: { ...first, status: "INACTIVE" },
+    });
+    const user = userEvent.setup();
+    renderTable();
+    await user.click(
+      within(table()).getByRole("button", { name: "Archive Zulu Item" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Archive product?",
+    });
+    expect(mocks.archive).not.toHaveBeenCalled();
+    await user.click(
+      within(dialog).getByRole("button", { name: "Confirm archive" }),
+    );
+    await waitFor(() =>
+      expect(mocks.archive).toHaveBeenCalledWith({
+        id: first.id,
+        expectedVersion: 9,
+      }),
+    );
+    expect(await screen.findByText("Product archived.")).toBeTruthy();
+  });
 
-    await user.click(screen.getByRole("button", { name: "Refresh products" }));
-    expect(router.refresh).toHaveBeenCalledOnce();
+  it("preserves success feedback when the action refresh clamps the last page", async () => {
+    let finish:
+      ((value: { ok: true; product: ProductListItem }) => void) | undefined;
+    mocks.archive.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    const user = userEvent.setup();
+    const initial: ProductListResult = {
+      ...defaultListing,
+      items: [first],
+      total: 26,
+      pageCount: 2,
+      query: { ...defaultListing.query, status: "ACTIVE" },
+    };
+    const view = renderTable(initial);
+    await user.click(
+      within(table()).getByRole("button", { name: "Archive Zulu Item" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Archive product?",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Confirm archive" }),
+    );
+    // Next's action refresh can commit new RSC props before the action promise
+    // resolves. The current page changes, but the tenant/context wrapper stays.
+    const refreshed = {
+      ...initial,
+      items: [second],
+      total: 25,
+      page: 1,
+      pageCount: 1,
+      query: { ...initial.query, page: 1 },
+    };
+    view.rerender(tableView(refreshed));
+    expect(screen.getByText("Page 1 of 1")).toBeTruthy();
+    await act(async () => {
+      finish?.({ ok: true, product: { ...first, status: "INACTIVE" } });
+    });
+    expect(await screen.findByText("Product archived.")).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+    await user.selectOptions(screen.getByLabelText("Sort by"), "sku-asc");
+    expect(screen.queryByText("Product archived.")).toBeNull();
+  });
+
+  it("reactivates inactive products through the separate protected action", async () => {
+    mocks.reactivate.mockResolvedValue({ ok: true, product: first });
+    const user = userEvent.setup();
+    renderTable({ items: [{ ...first, status: "INACTIVE" }] });
+    await user.click(
+      within(table()).getByRole("button", { name: "Reactivate Zulu Item" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Reactivate product?",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Confirm reactivation" }),
+    );
+    await waitFor(() =>
+      expect(mocks.reactivate).toHaveBeenCalledWith({
+        id: first.id,
+        expectedVersion: 9,
+      }),
+    );
+    expect(mocks.archive).not.toHaveBeenCalled();
+  });
+
+  it("shows stale-context failures without closing the form or claiming success", async () => {
+    mocks.create.mockResolvedValue({ ok: false, code: "STALE_CONTEXT" });
+    const { user, dialog } = await openCreate();
+    await fillProduct(user, dialog);
+    await user.click(
+      within(dialog).getByRole("button", { name: "Create product" }),
+    );
+    expect(
+      await screen.findByText(englishMessages.Products.errors.STALE_CONTEXT),
+    ).toBeTruthy();
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    expect(screen.queryByText("Product created.")).toBeNull();
+    expect(mocks.create).toHaveBeenCalledOnce();
+    expect(mocks.router.refresh).not.toHaveBeenCalled();
+    await user.click(
+      within(dialog).getByRole("button", { name: "Refresh workspace" }),
+    );
+    expect(mocks.router.refresh).toHaveBeenCalledOnce();
+    expect(mocks.create).toHaveBeenCalledOnce();
+  });
+
+  it("offers explicit stale-context recovery for archival without retrying it", async () => {
+    mocks.archive.mockResolvedValue({ ok: false, code: "STALE_CONTEXT" });
+    const user = userEvent.setup();
+    renderTable();
+    await user.click(
+      within(table()).getByRole("button", { name: "Archive Zulu Item" }),
+    );
+    const dialog = await screen.findByRole("dialog", {
+      name: "Archive product?",
+    });
+    await user.click(
+      within(dialog).getByRole("button", { name: "Confirm archive" }),
+    );
+    const recovery = await within(dialog).findByRole("button", {
+      name: "Refresh workspace",
+    });
+    expect(mocks.router.refresh).not.toHaveBeenCalled();
+    expect(mocks.archive).toHaveBeenCalledOnce();
+    await user.click(recovery);
+    expect(mocks.router.refresh).toHaveBeenCalledOnce();
+    expect(mocks.archive).toHaveBeenCalledOnce();
   });
 });

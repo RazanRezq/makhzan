@@ -1,3 +1,4 @@
+// Synthetic fixture model only. Live tenant Products use Drizzle-derived catalog.types.
 export const PRODUCT_CATEGORIES = [
   "BEVERAGES",
   "FOOD",
@@ -33,20 +34,4 @@ export type Product = {
   createdAt: string;
 };
 
-export type ProductsApiSuccess = {
-  data: Product[];
-  meta: {
-    count: number;
-    source: "synthetic-demo";
-  };
-};
-
-export type ProductsApiError = {
-  error: {
-    code: "DEMO_API_DISABLED" | "INTERNAL_ERROR" | "UNAUTHENTICATED" | "FORBIDDEN";
-    message: string;
-  };
-};
-
-export type ProductsApiResponse = ProductsApiSuccess | ProductsApiError;
 import { RESOURCE_STATUSES } from "@/lib/database/constants";

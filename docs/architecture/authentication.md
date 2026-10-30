@@ -55,10 +55,10 @@ B because no email provider is configured. Social login, MFA, and SSO remain def
 The localized dashboard and Products page require a database-validated session
 both in their shared layout and at each page before protected content or data is
 produced. This page-level guard prevents Next.js parallel rendering from
-serializing child content before a layout redirect resolves. The optional
-synthetic Products API independently validates its session on every request.
+serializing child content before a layout redirect resolves. The tenant-scoped
+Products API independently validates its session on every request.
 
-Dashboard and synthetic catalog access now additionally require a current active
+Dashboard and database catalog access additionally require a current active
 tenant membership and active tenant selection. Authentication alone grants no
 tenant access. Users without eligible memberships go to `/[locale]/onboarding`
 (prior members see a safe no-access state, not a new-company form). An authenticated,
@@ -93,8 +93,8 @@ insecure origins, and misuse of the isolated-test flag; forged and expired
 sessions; immediate access denial after logout; hostile or missing mutation
 origins; external callback URLs; generic credential errors; concurrent database
 rate limiting; and authenticated attempts to select a real tenant's product data.
-The latter asserts the current catalog remains synthetic; it does not implement
-or certify future membership/RBAC authorization. The auth migration only adds
+Group D extends those guards with real tenant-scoped product assertions and
+transactional RBAC/context-version checks. The auth migration only adds
 identity tables, indexes, and foreign keys, and leaves business rows intact.
 
 CI reports the full dependency audit without filtering out the four moderate

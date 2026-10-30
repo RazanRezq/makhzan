@@ -1,33 +1,35 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { CalendarDays, Tag } from "lucide-react";
 import { useTranslations } from "next-intl";
-import type { Product } from "@/lib/products/product.types";
+import type { ProductListItem } from "@/lib/products/catalog.types";
 import { cn } from "@/lib/utils";
-import {
-  categoryTranslationKeys,
-  createProductDateFormatter,
-  statusTranslationKeys,
-  unitTranslationKeys,
-} from "../product-labels";
 import { SelectionCheckbox } from "./selection-checkbox";
-
-type ProductCardProps = {
-  product: Product;
-  locale: string;
-  selected: boolean;
-  onSelectedChange: (selected: boolean) => void;
-};
 
 export function ProductCard({
   product,
   locale,
+  timezone,
   selected,
   onSelectedChange,
-}: ProductCardProps) {
+  actions,
+}: {
+  product: ProductListItem;
+  locale: string;
+  timezone: string;
+  selected: boolean;
+  onSelectedChange: (selected: boolean) => void;
+  actions: ReactNode;
+}) {
   const t = useTranslations("Products");
-  const dateFormatter = createProductDateFormatter(locale);
-
+  const dates = new Intl.DateTimeFormat(locale === "ar" ? "ar-AE" : "en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    numberingSystem: "latn",
+    timeZone: timezone,
+  });
   return (
     <article
       className={cn(
@@ -45,8 +47,10 @@ export function ProductCard({
         <div className="min-w-0 flex-1">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
-              <h3 className="font-medium leading-6">{product.name}</h3>
-              <p className="text-ltr mt-1 font-mono text-xs text-muted-foreground">
+              <h3 className="break-words font-medium leading-6">
+                {product.name}
+              </h3>
+              <p className="text-ltr mt-1 break-all font-mono text-xs text-muted-foreground">
                 {product.sku}
               </p>
             </div>
@@ -58,27 +62,38 @@ export function ProductCard({
                   : "bg-muted text-muted-foreground",
               )}
             >
-              {t(statusTranslationKeys[product.status])}
+              {t(
+                product.status === "ACTIVE"
+                  ? "statuses.active"
+                  : "statuses.inactive",
+              )}
             </span>
           </div>
           <dl className="mt-4 grid gap-3 text-sm">
             <div className="flex items-center gap-2">
-              <Tag className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <Tag
+                className="size-4 shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
               <dt className="sr-only">{t("columns.category")}</dt>
-              <dd className="text-muted-foreground">
-                {t(categoryTranslationKeys[product.category])}
+              <dd className="text-ltr break-all text-muted-foreground">
+                {product.categoryCode}
                 <span aria-hidden="true"> · </span>
-                {t(unitTranslationKeys[product.unit])}
+                {product.unitCode}
               </dd>
             </div>
             <div className="flex items-center gap-2">
-              <CalendarDays className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+              <CalendarDays
+                className="size-4 shrink-0 text-muted-foreground"
+                aria-hidden="true"
+              />
               <dt className="sr-only">{t("columns.createdAt")}</dt>
               <dd className="text-muted-foreground">
-                {dateFormatter.format(new Date(product.createdAt))}
+                {dates.format(new Date(product.createdAt))}
               </dd>
             </div>
           </dl>
+          {actions}
         </div>
       </div>
     </article>

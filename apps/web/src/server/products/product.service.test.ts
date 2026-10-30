@@ -5,9 +5,9 @@ import {
   PRODUCT_UNITS,
 } from "@/lib/products/product.types";
 import { mockProducts } from "./mock-products";
-import { listProducts } from "./product.service";
+import { listDemoProducts as listProducts } from "./demo-products";
 
-describe("listProducts", () => {
+describe("isolated synthetic fixture", () => {
   it("returns the complete deterministic product fixture", async () => {
     const products = await listProducts();
 

@@ -109,7 +109,7 @@ always opens Dashboard. `pending-setup` remains a read-only compatibility redire
 
 Every protected operation validates the Better Auth session, selected tenant,
 current membership status/role, tenant status, and required permission. Layout and
-page guards both run before protected content; the synthetic Products API checks
+page guards both run before protected content; the Products API checks
 independently. Authorization is never stored in a shared cache or trusted from
 client state. Server Components call server-only services directly.
 
@@ -124,9 +124,12 @@ enable an accessible Radix dialog/sheet with current-company indication, keyboar
 navigation, Escape/close, and focus return. A single membership renders a static
 label, not a switch action. Choosing the current company closes without a mutation.
 
-Dashboard and Products require an active membership. Products remain the same
-synthetic, clearly labeled demo catalog for all roles; tenant IDs in URLs/headers
-never select real Products records. No database-backed Products operation exists.
+Dashboard and Products require an active membership. Group D adds real
+tenant-owned Products, using `products.read`/`products.write` and the same locked
+context/membership boundary. Tenant IDs in URLs/headers never select ownership.
+Read rendering shares only a request-scoped context intent and rejects a changed
+version before listing data; mutation authorization always revalidates in its
+own transaction. See [Products architecture](products.md).
 
 ## Permissions and concurrency
 

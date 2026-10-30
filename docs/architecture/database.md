@@ -1,8 +1,8 @@
 # Database architecture
 
-**Scope:** Sprint 02 Groups A–C: database foundation, Better Auth identity tables,
-tenant memberships, and active company context. RLS, product CRUD, stock, orders,
-and database-backed product UI remain outside this scope.
+**Scope:** Sprint 02 Groups A–D: database foundation, Better Auth identity tables,
+tenant memberships, active company context and database-backed Products. RLS,
+stock, orders and category/unit lookup tables remain deferred.
 
 ## Entity relationships
 
@@ -115,8 +115,9 @@ timestamp updates.
   Identity, memberships, and RBAC are implemented; PostgreSQL RLS is deferred.
 - Future stock tables must reference products and warehouses with composite
   `(tenant_id, resource_id)` foreign keys.
-- No product/category/unit CRUD or seed data exists in Group A; the dashboard
-  continues using its synthetic server-only service.
+- Group D uses the existing product table for authorized CRUD and server-side
+  queries, without a new migration or automatic seeds. Category/unit lookup CRUD
+  is deferred. See [Products architecture](products.md).
 - B-tree indexes cover known tenant access patterns. Full-text/trigram search,
   partitioning, replicas, and advanced pooling require measured demand.
 - Memberships reference Better Auth's text user identifier without duplicating or

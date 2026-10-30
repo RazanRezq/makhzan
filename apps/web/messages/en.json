@@ -121,12 +121,15 @@
   "Products": {
     "metadata": {
       "title": "Products | Makhzan",
-      "description": "Browse and organize the synthetic Makhzan product catalog."
+      "description": "Manage your company's products securely in Makhzan."
     },
     "eyebrow": "Product catalog",
     "title": "Products",
     "description": "Find and review the items your business works with.",
-    "demoLabel": "Synthetic demo data",
+    "demoLabel": "Company catalog",
+    "serverProcessing": "Search, filters and sorting apply to your full company catalog.",
+    "readOnly": "Read only",
+    "clearFilters": "Clear filters",
     "tableTitle": "Product catalog",
     "tableCaption": "Products with category, unit, status, and creation date",
     "search": {
@@ -138,7 +141,8 @@
       "allCategories": "All categories",
       "status": "Status",
       "allStatuses": "All statuses",
-      "clear": "Clear filters"
+      "clear": "Clear filters",
+      "apply": "Apply filters"
     },
     "sorting": {
       "label": "Sort by",
@@ -156,7 +160,8 @@
       "category": "Category",
       "unit": "Unit",
       "status": "Status",
-      "createdAt": "Created"
+      "createdAt": "Created",
+      "actions": "Actions"
     },
     "categories": {
       "beverages": "Beverages",
@@ -181,11 +186,12 @@
     },
     "selection": {
       "selectPage": "Select all products on this page",
-      "selectProduct": "Select {name}"
+      "selectProduct": "Select {name}",
+      "pageOnly": "Selection applies only to this loaded page and is cleared when you change pages, filters, sorting or company."
     },
     "counts": {
       "products": "{count} products",
-      "selected": "{count} selected"
+      "selected": "{count} selected on this page"
     },
     "pagination": {
       "rowsPerPage": "Rows per page",
@@ -195,12 +201,69 @@
     },
     "empty": {
       "title": "No products yet",
-      "description": "Products will appear here when catalog data is available.",
-      "refresh": "Refresh products"
+      "description": "Your company catalog is empty. Add your first product to get started.",
+      "refresh": "Refresh products",
+      "readOnly": "Ask your company owner or manager to add products."
     },
     "noResults": {
       "title": "No matching products",
       "description": "Try a different search or clear the filters to see the full catalog."
+    },
+    "actions": {
+      "add": "Add product",
+      "create": "Create product",
+      "save": "Save changes",
+      "saving": "Saving…",
+      "close": "Close product dialog",
+      "refreshWorkspace": "Refresh workspace",
+      "editLabel": "Edit {name}",
+      "archiveLabel": "Archive {name}",
+      "reactivateLabel": "Reactivate {name}",
+      "confirmArchive": "Confirm archive",
+      "confirmReactivate": "Confirm reactivation"
+    },
+    "form": {
+      "createTitle": "Add product",
+      "editTitle": "Edit product",
+      "description": "Enter your product details. Category and unit codes are identifiers, not new category or unit records.",
+      "fields": {
+        "sku": "SKU",
+        "name": "Product name",
+        "categoryCode": "Category code",
+        "unitCode": "Unit code"
+      }
+    },
+    "validation": {
+      "sku": "Enter a SKU of up to 64 printable ASCII characters. Spaces are normalized and letters stored uppercase.",
+      "name": "Enter a product name between 1 and 200 characters.",
+      "categoryCode": "Enter a category code up to 64 characters using letters, numbers, dots, underscores, slashes or hyphens.",
+      "unitCode": "Enter a unit code up to 32 characters using letters, numbers, dots, underscores, slashes or hyphens."
+    },
+    "confirm": {
+      "archiveTitle": "Archive product?",
+      "archiveDescription": "Archive {name}? Its record will be retained and you can reactivate it later.",
+      "reactivateTitle": "Reactivate product?",
+      "reactivateDescription": "Make {name} active again in your company catalog?"
+    },
+    "feedback": {
+      "created": "Product created.",
+      "updated": "Product updated.",
+      "archived": "Product archived.",
+      "reactivated": "Product reactivated."
+    },
+    "errors": {
+      "INVALID_INPUT": "Check the product details or listing parameters.",
+      "NOT_FOUND": "This product is unavailable in your company.",
+      "DUPLICATE_SKU": "This SKU is already used in your company. Choose another SKU.",
+      "UNAVAILABLE": "The operation could not be confirmed. Refresh and check the catalog before trying again.",
+      "UNAUTHENTICATED": "Your session has expired. Sign in again.",
+      "NO_TENANT": "Choose a company before continuing.",
+      "FORBIDDEN": "You do not have permission for this company or operation.",
+      "STALE_CONTEXT": "The active company changed in another tab. Refresh before trying again.",
+      "ALREADY_MEMBER": "Your company membership changed. Refresh before continuing.",
+      "IDEMPOTENCY_CONFLICT": "The operation details changed. Refresh before trying again.",
+      "RATE_LIMITED": "Too many attempts. Wait before trying again.",
+      "FINAL_OWNER": "A company must retain an active owner."
     },
     "loading": {
       "label": "Loading products",

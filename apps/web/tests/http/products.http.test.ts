@@ -14,6 +14,7 @@ import type { ChildProcess } from "node:child_process";
 import * as schema from "@/server/db/schema";
 import type { AuthSession } from "@/server/auth/auth";
 import type { ActionManifest } from "next/dist/build/webpack/plugins/flight-client-entry-plugin";
+import type { ProductListItem } from "@/lib/products/catalog.types";
 
 type RunningServer = {
   baseUrl: string;
@@ -30,6 +31,11 @@ const distDirectory = path.join(webRoot, distDirectoryName);
 const testTsconfigName = `tsconfig.http-${process.pid}.json`;
 const testTsconfigPath = path.join(webRoot, testTsconfigName);
 const nextCli = createRequire(import.meta.url).resolve("next/dist/bin/next");
+// jsdom is already installed for component tests; use a narrow test-local type
+// rather than adding a new declaration dependency just to inspect returned HTML.
+const { JSDOM } = createRequire(import.meta.url)("jsdom") as {
+  JSDOM: new (html: string) => { window: { document: Document } };
+};
 
 function requireSafeTestDatabaseUrl(value: string | undefined) {
   if (process.env.NODE_ENV !== "test" || !value) {
@@ -58,6 +64,78 @@ let authenticatedCookie: string | undefined;
 let privateTenantId: string;
 let memberTenantId: string;
 const PRIVATE_PRODUCT_SKU = "PRIVATE-TENANT-PRODUCT";
+const OWN_PRODUCT_SKU = "HTTP-PRODUCT-060";
+
+type CatalogResponse = {
+  data: ProductListItem[];
+  meta: { total: number; page: number; pageSize: number; pageCount: number };
+};
+type ProductMutationResult =
+  | { ok: true; product: ProductListItem }
+  | { ok: false; code: string };
+
+function renderedDocument(html: string) {
+  return new JSDOM(html).window.document;
+}
+
+function mutationResult(body: string): ProductMutationResult {
+  for (const line of body.split("\n")) {
+    const payload = line.slice(line.indexOf(":") + 1);
+    if (!payload.startsWith('{"ok":')) continue;
+    return JSON.parse(payload) as ProductMutationResult;
+  }
+  throw new Error("The Server Action response contained no typed mutation result.");
+}
+
+async function identityFor(cookie: string) {
+  if (!enabledServer) throw new Error("Test server unavailable.");
+  const response = await fetch(`${enabledServer.baseUrl}/api/auth/get-session`, {
+    headers: { Cookie: cookie },
+  });
+  if (!response.ok) throw new Error("HTTP fixture session lookup failed.");
+  return response.json() as Promise<AuthSession>;
+}
+
+async function currentVersion(cookie: string) {
+  const identity = await identityFor(cookie);
+  const context = await pool.query<{ version: number }>(
+    "select version from session_tenant_context where session_id=$1", [identity.session.id],
+  );
+  if (!context.rows[0]) throw new Error("HTTP fixture has no selected company.");
+  return context.rows[0].version;
+}
+
+async function readCatalog(query = "", cookie = authenticatedCookie ?? "") {
+  if (!enabledServer) throw new Error("Test server unavailable.");
+  const response = await fetch(`${enabledServer.baseUrl}/api/products${query}`, {
+    headers: { Cookie: cookie },
+  });
+  expect(response.status).toBe(200);
+  return response.json() as Promise<CatalogResponse>;
+}
+
+function productInput(sku: string, expectedVersion: number) {
+  return { sku, name: `Product ${sku}`, categoryCode: "HTTP/PRODUCTS", unitCode: "UNIT", expectedVersion };
+}
+
+async function seedCatalog(tenantId: string) {
+  // Explicit fixture data belongs only to this suite's guarded disposable DB.
+  await pool.query(
+    `insert into products(tenant_id,sku,name,category_code,unit_code,status,created_at)
+     select $1, 'HTTP-PRODUCT-' || lpad(i::text,3,'0'),
+       case when i >= 59 then 'HTTP Item tie' else 'HTTP Item ' || lpad(i::text,3,'0') end,
+       case when i % 3 = 0 then 'FOOD' when i % 3 = 1 then 'OFFICE' else 'CLEANING' end,
+       'UNIT', case when i % 4 = 0 then 'INACTIVE' else 'ACTIVE' end,
+       timestamptz '2026-01-01 00:00:00+00' + i * interval '1 second'
+     from generate_series(1,60) as i`,
+    [tenantId],
+  );
+  await pool.query(
+    `insert into products(tenant_id,sku,name,category_code,unit_code,created_at)
+     values ($1,'HTTP%_LITERAL','Literal 100%_ match','CUSTOM/CATEGORY','CUSTOM.UNIT',timestamptz '2025-01-01 00:00:00+00')`,
+    [tenantId],
+  );
+}
 
 function nextEnvironment(
   demoApiEnabled: boolean,
@@ -167,6 +245,9 @@ async function stopServer(server: RunningServer | undefined) {
 }
 
 async function authenticate(server: RunningServer, withCompany = true, suffix = "") {
+  // Independent HTTP fixtures share loopback. Isolate only their signup/login
+  // counters; production limits and the authentication limiter tests stay intact.
+  await pool.query("delete from rate_limit where key in ('127.0.0.1|/sign-up/email', '127.0.0.1|/sign-in/email')");
   const email = `http-${process.pid}${suffix}@example.test`;
   const headers = { "Content-Type": "application/json", Origin: server.baseUrl };
   const registration = await fetch(`${server.baseUrl}/api/auth/sign-up/email`, {
@@ -264,6 +345,7 @@ beforeAll(async () => {
   enabledServer = await startProductionServer(true);
   disabledServer = await startProductionServer(false);
   authenticatedCookie = await authenticate(enabledServer);
+  await seedCatalog(memberTenantId);
 });
 
 afterAll(async () => {
@@ -274,7 +356,7 @@ afterAll(async () => {
 });
 
 describe("products HTTP contracts", () => {
-  it("requires a valid session for the synthetic catalog API", async () => {
+  it("requires a valid session for the tenant-owned catalog API", async () => {
     const response = await fetch(`${enabledServer?.baseUrl}/api/products`);
     expect(response.status).toBe(401);
     expect(await response.json()).toEqual({
@@ -285,7 +367,7 @@ describe("products HTTP contracts", () => {
     });
   });
 
-  it("serves the deterministic synthetic catalog to an authenticated user", async () => {
+  it("serves only a bounded PostgreSQL product page to an authenticated member", async () => {
     const response = await fetch(`${enabledServer?.baseUrl}/api/products`, {
       headers: { Cookie: authenticatedCookie ?? "" },
     });
@@ -294,7 +376,8 @@ describe("products HTTP contracts", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type")).toContain("application/json");
     expect(response.headers.get("cache-control")).toContain("no-store");
-    expect(body).toMatchObject({ meta: { count: 42, source: "synthetic-demo" } });
+    expect(response.headers.get("cache-control")).toContain("private");
+    expect(body).toMatchObject({ meta: { total: 61, page: 1, pageSize: 25, pageCount: 3 } });
 
     if (
       typeof body !== "object" ||
@@ -304,7 +387,7 @@ describe("products HTTP contracts", () => {
     ) {
       throw new Error("Products response did not contain a data array.");
     }
-    expect(body.data).toHaveLength(42);
+    expect(body.data).toHaveLength(25);
     const ids = body.data.map((product: unknown) => {
       if (typeof product !== "object" || product === null || !("id" in product)) {
         throw new Error("Product response item did not contain an id.");
@@ -312,6 +395,10 @@ describe("products HTTP contracts", () => {
       return product.id;
     });
     expect(new Set(ids).size).toBe(ids.length);
+    expect(JSON.stringify(body)).not.toContain(PRIVATE_PRODUCT_SKU);
+    expect(JSON.stringify(body)).not.toContain("synthetic-demo");
+    expect(body.data[0]).toMatchObject({ sku: OWN_PRODUCT_SKU, categoryCode: "FOOD", unitCode: "UNIT" });
+    expect(body.data[0]).not.toHaveProperty("tenantId");
   });
 
   it("rejects unsupported methods through the running Next.js server", async () => {
@@ -321,17 +408,14 @@ describe("products HTTP contracts", () => {
     expect(response.status).toBe(405);
   });
 
-  it("keeps the demo API disabled for authenticated users without explicit access", async () => {
+  it("retires the demo flag without making the replacement endpoint public", async () => {
     const response = await fetch(`${disabledServer?.baseUrl}/api/products`, {
       headers: { Cookie: authenticatedCookie ?? "" },
     });
-    expect(response.status).toBe(404);
-    expect(await response.json()).toEqual({
-      error: {
-        code: "DEMO_API_DISABLED",
-        message: "The synthetic products API is disabled.",
-      },
-    });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ meta: { total: 61, pageSize: 25 } });
+    const unauthenticated = await fetch(`${disabledServer?.baseUrl}/api/products`);
+    expect(unauthenticated.status).toBe(401);
   });
 });
 
@@ -344,7 +428,7 @@ describe("localized authentication and protected routes", () => {
       });
       const html = await response.text();
       expect(response.status).toBe(200);
-      expect(html).not.toContain("BEV-WAT-001");
+      expect(html).not.toContain(OWN_PRODUCT_SKU);
       expect(html).toContain(`NEXT_REDIRECT;replace;/${locale}/sign-in;307;`);
     },
   );
@@ -363,7 +447,9 @@ describe("localized authentication and protected routes", () => {
       expect(response.headers.get("content-type")).toContain("text/html");
       expect(html).toContain(`<html lang="${locale}" dir="${direction}"`);
       expect(html).toContain(title);
-      expect(html).toContain("BEV-WAT-001");
+      expect(html).toContain(OWN_PRODUCT_SKU);
+      expect(html).not.toContain("BEV-WAT-001");
+      expect(html).not.toContain(PRIVATE_PRODUCT_SKU);
     },
   );
 
@@ -407,11 +493,16 @@ describe("protected content security boundaries", () => {
     const response = await fetch(`${enabledServer?.baseUrl}/api/products?tenant_id=${privateTenantId}`, {
       headers: { Cookie: authenticatedCookie ?? "", "X-Tenant-Id": privateTenantId },
     });
-    expect(response.status).toBe(200);
+    expect(response.status).toBe(400);
     const body = await response.text();
-    expect(body).toContain('"source":"synthetic-demo"');
+    expect(body).toContain("INVALID_INPUT");
     expect(body).not.toContain(PRIVATE_PRODUCT_SKU);
     expect(body).not.toContain(privateTenantId);
+    const headerOnly = await fetch(`${enabledServer?.baseUrl}/api/products`, {
+      headers: { Cookie: authenticatedCookie ?? "", "X-Tenant-Id": privateTenantId },
+    });
+    expect(headerOnly.status).toBe(200);
+    expect(await headerOnly.text()).not.toContain(PRIVATE_PRODUCT_SKU);
     for (const locale of ["en", "ar"]) {
       const page = await fetch(`${disabledServer?.baseUrl}/${locale}/products?tenant_id=${privateTenantId}`, {
         headers: { Cookie: authenticatedCookie ?? "" },
@@ -434,7 +525,7 @@ describe("protected content security boundaries", () => {
     expect(api.status).toBe(401);
     const page = await fetch(`${enabledServer.baseUrl}/en/products`, { headers: { Cookie: cookie } });
     const html = await page.text();
-    expect(html).not.toContain("BEV-WAT-001");
+    expect(html).not.toContain(OWN_PRODUCT_SKU);
     expect(html).toContain("NEXT_REDIRECT;replace;/en/sign-in;307;");
   });
 });
@@ -491,7 +582,11 @@ describe("company onboarding and active-context HTTP boundaries", () => {
     const page = await fetch(`${enabledServer.baseUrl}/ar/products`, { headers: { Cookie: cookie } });
     const html = await page.text();
     expect(html).toContain("Action Company");
-    expect(html).toContain("BEV-WAT-001");
+    expect(html).not.toContain("BEV-WAT-001");
+    expect(html).not.toContain(OWN_PRODUCT_SKU);
+    expect(renderedDocument(html).body.textContent).toContain("لا توجد منتجات بعد");
+    const empty = await fetch(`${enabledServer.baseUrl}/api/products`, { headers: { Cookie: cookie } });
+    expect(await empty.json()).toMatchObject({ data: [], meta: { total: 0 } });
     expect(html).toContain('dir="rtl"');
     // Alternate sessions against the same route on the same Next.js process.
     // Neither Server Component output nor authorization may be shared by tenant.
@@ -509,6 +604,7 @@ describe("company onboarding and active-context HTTP boundaries", () => {
         expect(body).toContain(ownName);
         expect(body).not.toContain(otherName);
         expect(body).not.toContain(PRIVATE_PRODUCT_SKU);
+        expect(body.includes(OWN_PRODUCT_SKU)).toBe(sessionCookie === authenticatedCookie);
         expect(response.headers.get("cache-control")).toContain("no-store");
       }
     }
@@ -620,5 +716,293 @@ describe("company onboarding and active-context HTTP boundaries", () => {
     expect(await unauthenticated.text()).toContain("UNAUTHENTICATED");
     const hostile = await action("resolveCompanyEntryAction", "/en/sign-in", undefined, authenticatedCookie ?? "", "https://hostile.example");
     expect(hostile.status).toBeGreaterThanOrEqual(400);
+  });
+});
+
+describe("database-backed Products query contracts", () => {
+  it("combines normalized search, category and status filters over the full tenant dataset", async () => {
+    const query = new URLSearchParams({ search: "  http item  ", category: "food", status: "ACTIVE", sort: "sku", direction: "asc", page: "2", pageSize: "10" });
+    const body = await readCatalog(`?${query}`);
+    const expected = await pool.query<{ id: string }>(
+      "select id from products where tenant_id=$1 and name ilike '%http item%' and category_code='FOOD' and status='ACTIVE' order by sku asc,id asc offset 10 limit 10", [memberTenantId],
+    );
+    expect(body.data.map(({ id }) => id)).toEqual(expected.rows.map(({ id }) => id));
+    expect(body.meta).toEqual({ total: 15, page: 2, pageSize: 10, pageCount: 2 });
+    expect(body.data).toHaveLength(5);
+    expect(body.data.every(({ categoryCode, status }) => categoryCode === "FOOD" && status === "ACTIVE")).toBe(true);
+  });
+
+  it("treats wildcard characters as literal search text rather than unrestricted patterns", async () => {
+    const body = await readCatalog(`?${new URLSearchParams({ search: "%_" })}`);
+    expect(body.meta.total).toBe(1);
+    expect(body.data.map(({ sku }) => sku)).toEqual(["HTTP%_LITERAL"]);
+    const bySku = await readCatalog("?search=http-product-060");
+    expect(bySku.meta.total).toBe(1);
+    expect(bySku.data[0]?.sku).toBe(OWN_PRODUCT_SKU);
+  });
+
+  it("sorts the complete dataset across pages with a stable UUID tie-breaker", async () => {
+    const expected = await pool.query<{ id: string }>(
+      "select id from products where tenant_id=$1 order by name asc,id asc", [memberTenantId],
+    );
+    const ids: string[] = [];
+    for (let page = 1; page <= 7; page++) {
+      const body = await readCatalog(`?sort=name&direction=asc&pageSize=10&page=${page}`);
+      expect(body.data.length).toBeLessThanOrEqual(10);
+      ids.push(...body.data.map(({ id }) => id));
+    }
+    expect(ids).toEqual(expected.rows.map(({ id }) => id));
+    expect(new Set(ids).size).toBe(61);
+    const ties = await readCatalog(`?${new URLSearchParams({ search: "HTTP Item tie", sort: "name", direction: "desc" })}`);
+    expect(ties.data).toHaveLength(2);
+    expect(ties.data.map(({ id }) => id)).toEqual(ties.data.map(({ id }) => id).sort());
+  });
+
+  it("clamps an out-of-range page and returns a consistent zero-result page", async () => {
+    const last = await readCatalog("?page=99999&pageSize=10&sort=sku&direction=asc");
+    expect(last.meta).toEqual({ total: 61, page: 7, pageSize: 10, pageCount: 7 });
+    expect(last.data).toHaveLength(1);
+    const empty = await readCatalog("?search=no-product-matches-this-filter&page=8");
+    expect(empty).toMatchObject({ data: [], meta: { total: 0, page: 1, pageCount: 1 } });
+  });
+
+  it.each([
+    "page=0", "pageSize=1000", "sort=tenant_id", "direction=desc%3Bdrop", "search=a&search=b", "category=BAD%20CODE", "unknown=true",
+    "constructor=x", "search=%00",
+  ])("rejects invalid query parameters without returning tenant data (%s)", async (query) => {
+    const response = await fetch(`${enabledServer?.baseUrl}/api/products?${query}`, { headers: { Cookie: authenticatedCookie ?? "" } });
+    expect(response.status).toBe(400);
+    expect(response.headers.get("cache-control")).toContain("no-store");
+    const body = await response.text();
+    expect(JSON.parse(body)).toEqual({ error: { code: "INVALID_INPUT", message: "Invalid product query." } });
+    expect(body).not.toContain(OWN_PRODUCT_SKU);
+    expect(body).not.toContain(PRIVATE_PRODUCT_SKU);
+    expect(body).not.toContain("postgresql://");
+  });
+
+  it.each(["__proto__=x", "__proto__=x&__proto__=y"])(
+    "keeps framework-normalized prototype-key requests bounded and tenant-scoped (%s)",
+    async (query) => {
+      if (!enabledServer || !authenticatedCookie) throw new Error("Test fixture unavailable.");
+      // Installed Next 16.4.2 calls normalizeCdnUrl before constructing the Route
+      // Handler Request. Its parseReqUrl -> Object.entries reconstruction drops
+      // these prototype keys, so userland cannot return a 400 for the removed key.
+      // Raw application-parser unit tests still require strict rejection. Here,
+      // verify the actual HTTP boundary does not widen authorization or filters.
+      const baseline = await readCatalog();
+      const response = await fetch(`${enabledServer.baseUrl}/api/products?${query}`, {
+        headers: { Cookie: authenticatedCookie, "X-Tenant-Id": privateTenantId },
+      });
+      expect(response.status).toBe(200);
+      expect(response.headers.get("content-type")).toContain("application/json");
+      expect(response.headers.get("cache-control")).toContain("private");
+      expect(response.headers.get("cache-control")).toContain("no-store");
+      const body = await response.json() as CatalogResponse;
+      expect(body).toEqual(baseline);
+      expect(Object.keys(body).sort()).toEqual(["data", "meta"]);
+      expect(body.meta).toEqual({ total: 61, page: 1, pageSize: 25, pageCount: 3 });
+      expect(body.data).toHaveLength(25);
+      const owned = await pool.query<{ id: string }>("select id from products where tenant_id=$1", [memberTenantId]);
+      const ownedIds = new Set(owned.rows.map(({ id }) => id));
+      for (const product of body.data) {
+        expect(ownedIds.has(product.id)).toBe(true);
+        expect(Object.keys(product).sort()).toEqual([
+          "categoryCode", "createdAt", "id", "name", "sku", "status", "unitCode", "updatedAt",
+        ]);
+      }
+      expect(JSON.stringify(body)).not.toContain(PRIVATE_PRODUCT_SKU);
+      expect(JSON.stringify(body)).not.toContain(privateTenantId);
+      const filtered = await readCatalog(`?${query}&search=HTTP-PRODUCT-060`);
+      expect(filtered.meta.total).toBe(1);
+      expect(filtered.data.map(({ sku }) => sku)).toEqual([OWN_PRODUCT_SKU]);
+      const anonymous = await fetch(`${enabledServer.baseUrl}/api/products?${query}`);
+      expect(anonymous.status).toBe(401);
+      expect(await readCatalog()).toEqual(baseline);
+    },
+  );
+
+  it("renders coherent company labels, products and context versions after explicit switches", async () => {
+    if (!enabledServer) throw new Error("Test fixture unavailable.");
+    const cookie = await authenticate(enabledServer, false, "-render-context");
+    const identity = await identityFor(cookie);
+    await pool.query("insert into tenant_memberships(tenant_id,user_id,role) values ($1,$3,'VIEWER'),($2,$3,'VIEWER')", [memberTenantId, privateTenantId, identity.user.id]);
+    await pool.query("insert into session_tenant_context(session_id,tenant_id) values ($1,$2)", [identity.session.id, memberTenantId]);
+    for (const [tenantId, name, sku, foreignSku, locale] of [
+      [memberTenantId, "HTTP Authorized Company", OWN_PRODUCT_SKU, PRIVATE_PRODUCT_SKU, "en"],
+      [privateTenantId, "Private test business", PRIVATE_PRODUCT_SKU, OWN_PRODUCT_SKU, "ar"],
+      [memberTenantId, "HTTP Authorized Company", OWN_PRODUCT_SKU, PRIVATE_PRODUCT_SKU, "en"],
+    ]) {
+      const switched = await action("selectCompanyAction", `/${locale}/select-company`, {
+        tenantId, expectedVersion: await currentVersion(cookie),
+      }, cookie);
+      expect(await switched.text()).toContain('"ok":true');
+      const version = await currentVersion(cookie);
+      const response = await fetch(`${enabledServer.baseUrl}/${locale}/products`, { headers: { Cookie: cookie } });
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toContain("no-store");
+      const html = await response.text();
+      const document = renderedDocument(html);
+      expect(document.querySelector("header")?.textContent).toContain(name);
+      // Inspect the complete streamed response: Next may emit the page body in
+      // deferred templates that a non-executing HTML parser does not relocate.
+      expect(html).toContain(sku);
+      expect(html).not.toContain(foreignSku);
+      const renderedVersions = [...html.replaceAll('\\"', '"').matchAll(/"contextVersion":(\d+)/g)]
+        .map((match) => Number(match[1]));
+      expect(renderedVersions.length).toBeGreaterThanOrEqual(2);
+      expect(renderedVersions.every((rendered) => rendered === version)).toBe(true);
+    }
+  });
+});
+
+describe("Products Server Action authorization and persistence", () => {
+  it.each(["OWNER", "MANAGER", "STAFF", "VIEWER"] as const)("enforces %s write permissions independently of role-specific controls", async (role) => {
+    if (!enabledServer || !authenticatedCookie) throw new Error("Test fixture unavailable.");
+    const identity = await identityFor(authenticatedCookie);
+    await pool.query("update tenant_memberships set role=$1 where tenant_id=$2 and user_id=$3", [role, memberTenantId, identity.user.id]);
+    try {
+      const canWrite = role === "OWNER" || role === "MANAGER";
+      const response = await fetch(`${enabledServer.baseUrl}/en/products?search=HTTP-PRODUCT-060`, { headers: { Cookie: authenticatedCookie } });
+      const document = renderedDocument(await response.text());
+      const buttons = [...document.querySelectorAll("button")];
+      const writeControls = buttons.filter((button) => button.textContent?.trim() === "Add product" || /^(Edit|Archive|Reactivate) /.test(button.getAttribute("aria-label") ?? ""));
+      expect(writeControls.length > 0).toBe(canWrite);
+      const read = await readCatalog("?search=HTTP-PRODUCT-060");
+      expect(read.data).toHaveLength(1);
+      const input = productInput(`HTTP-ROLE-${role}`, await currentVersion(authenticatedCookie));
+      const created = await action("createProductAction", "/en/products", input, authenticatedCookie);
+      const body = await created.text();
+      const result = mutationResult(body);
+      if (canWrite) {
+        expect(result).toMatchObject({ ok: true, product: { sku: input.sku } });
+        expect((body.match(new RegExp(input.sku, "g")) ?? []).length).toBeGreaterThan(1);
+      } else expect(result).toEqual({ ok: false, code: "FORBIDDEN" });
+      const saved = await pool.query<{ count: number }>("select count(*)::int count from products where tenant_id=$1 and sku=$2", [memberTenantId, input.sku]);
+      expect(saved.rows[0]?.count).toBe(canWrite ? 1 : 0);
+    } finally {
+      await pool.query("update tenant_memberships set role='OWNER' where tenant_id=$1 and user_id=$2", [memberTenantId, identity.user.id]);
+    }
+  });
+
+  it("creates, updates, archives and reactivates through real actions without changing ownership", async () => {
+    if (!authenticatedCookie || !enabledServer) throw new Error("Test fixture unavailable.");
+    const expectedVersion = await currentVersion(authenticatedCookie);
+    const initial = productInput("  http-crud  ", expectedVersion);
+    const created = mutationResult(await (await action("createProductAction", "/en/products", initial, authenticatedCookie)).text());
+    expect(created).toMatchObject({ ok: true, product: { sku: "HTTP-CRUD", status: "ACTIVE" } });
+    if (!created.ok) throw new Error("Authorized product creation failed.");
+    expect(created.product).not.toHaveProperty("tenantId");
+    const id = created.product.id;
+    const updated = mutationResult(await (await action("updateProductAction", "/en/products", { ...initial, id, sku: "HTTP-CRUD-EDITED", name: "Updated database product", categoryCode: "custom/category", unitCode: "box" }, authenticatedCookie)).text());
+    expect(updated).toMatchObject({ ok: true, product: { id, sku: "HTTP-CRUD-EDITED", categoryCode: "CUSTOM/CATEGORY", unitCode: "BOX", createdAt: created.product.createdAt } });
+    if (!updated.ok) throw new Error("Authorized product update failed.");
+    expect(Date.parse(updated.product.updatedAt)).toBeGreaterThanOrEqual(Date.parse(created.product.updatedAt));
+    const page = await fetch(`${enabledServer.baseUrl}/en/products?search=HTTP-CRUD-EDITED`, { headers: { Cookie: authenticatedCookie } });
+    expect(await page.text()).toContain("Updated database product");
+    for (const [name, status] of [["archiveProductAction", "INACTIVE"], ["reactivateProductAction", "ACTIVE"]] as const) {
+      const result = mutationResult(await (await action(name, "/en/products", { id, expectedVersion }, authenticatedCookie)).text());
+      expect(result).toMatchObject({ ok: true, product: { id, status } });
+    }
+    const persisted = await pool.query<{ tenant_id: string; status: string; count: number }>("select tenant_id,status,count(*)::int count from products where tenant_id=$1 and id=$2 group by tenant_id,status", [memberTenantId, id]);
+    expect(persisted.rows).toEqual([{ tenant_id: memberTenantId, status: "ACTIVE", count: 1 }]);
+  });
+
+  it("returns safe duplicate-SKU feedback for Unicode normalization collisions", async () => {
+    if (!authenticatedCookie) throw new Error("Test fixture unavailable.");
+    const input = productInput("HTTP-COLLISION", await currentVersion(authenticatedCookie));
+    expect(mutationResult(await (await action("createProductAction", "/en/products", input, authenticatedCookie)).text())).toMatchObject({ ok: true });
+    const collision = await action("createProductAction", "/en/products", { ...input, sku: "ｈｔｔｐ-ｃｏｌｌｉｓｉｏｎ" }, authenticatedCookie);
+    const body = await collision.text();
+    expect(mutationResult(body)).toEqual({ ok: false, code: "DUPLICATE_SKU" });
+    expect(body).not.toContain("products_tenant_sku_unique");
+    expect(body).not.toContain("postgresql://");
+  });
+
+  it("enforces database uniqueness for concurrent duplicate creation", async () => {
+    if (!authenticatedCookie) throw new Error("Test fixture unavailable.");
+    const input = productInput("HTTP-CONCURRENT", await currentVersion(authenticatedCookie));
+    const responses = await Promise.all([action("createProductAction", "/en/products", input, authenticatedCookie), action("createProductAction", "/en/products", input, authenticatedCookie)]);
+    const results = await Promise.all(responses.map(async (response) => mutationResult(await response.text())));
+    expect(results.filter(({ ok }) => ok)).toHaveLength(1);
+    expect(results.filter((result) => !result.ok && result.code === "DUPLICATE_SKU")).toHaveLength(1);
+    const saved = await pool.query<{ count: number }>("select count(*)::int count from products where tenant_id=$1 and sku=$2", [memberTenantId, input.sku]);
+    expect(saved.rows[0]?.count).toBe(1);
+  });
+
+  it("rejects unauthenticated, hostile-origin and forged-ownership Product actions", async () => {
+    if (!authenticatedCookie) throw new Error("Test fixture unavailable.");
+    const expectedVersion = await currentVersion(authenticatedCookie);
+    const input = productInput("HTTP-REJECTED", expectedVersion);
+    for (const name of ["createProductAction", "updateProductAction", "archiveProductAction", "reactivateProductAction"]) {
+      const unauthenticated = await action(name, "/en/products", input, "");
+      expect(mutationResult(await unauthenticated.text())).toEqual({ ok: false, code: "UNAUTHENTICATED" });
+      const hostile = await action(name, "/en/products", input, authenticatedCookie, "https://hostile.example");
+      expect(hostile.status).toBeGreaterThanOrEqual(400);
+    }
+    const forged = await action("createProductAction", "/en/products", { ...input, tenantId: privateTenantId, role: "OWNER" }, authenticatedCookie);
+    expect(mutationResult(await forged.text())).toEqual({ ok: false, code: "INVALID_INPUT" });
+    const saved = await pool.query<{ count: number }>("select count(*)::int count from products where tenant_id in ($1,$2) and sku=$3", [memberTenantId, privateTenantId, input.sku]);
+    expect(saved.rows[0]?.count).toBe(0);
+  });
+
+  it("does not reveal or mutate a product from another tenant by forged UUID", async () => {
+    if (!authenticatedCookie) throw new Error("Test fixture unavailable.");
+    const foreign = await pool.query<{ id: string; name: string; status: string }>("select id,name,status from products where tenant_id=$1", [privateTenantId]);
+    const original = foreign.rows[0]!;
+    const input = { ...productInput("HTTP-CROSS-TENANT", await currentVersion(authenticatedCookie)), id: original.id };
+    for (const [name, payload] of [
+      ["updateProductAction", input],
+      ["archiveProductAction", { id: input.id, expectedVersion: input.expectedVersion }],
+      ["reactivateProductAction", { id: input.id, expectedVersion: input.expectedVersion }],
+    ] as const) {
+      const response = await action(name, "/en/products", payload, authenticatedCookie);
+      const body = await response.text();
+      expect(mutationResult(body)).toEqual({ ok: false, code: "NOT_FOUND" });
+      expect(body).not.toContain(PRIVATE_PRODUCT_SKU);
+    }
+    const after = await pool.query<{ id: string; name: string; status: string }>("select id,name,status from products where tenant_id=$1", [privateTenantId]);
+    expect(after.rows).toEqual(foreign.rows);
+  });
+
+  it("rejects a stale Products action after a real company switch", async () => {
+    if (!enabledServer) throw new Error("Test fixture unavailable.");
+    const cookie = await authenticate(enabledServer, false, "-product-stale");
+    const identity = await identityFor(cookie);
+    await pool.query("insert into tenant_memberships(tenant_id,user_id,role) values ($1,$3,'MANAGER'),($2,$3,'MANAGER')", [memberTenantId, privateTenantId, identity.user.id]);
+    await pool.query("insert into session_tenant_context(session_id,tenant_id) values ($1,$2)", [identity.session.id, memberTenantId]);
+    const switched = await action("selectCompanyAction", "/en/select-company", { tenantId: privateTenantId, expectedVersion: 1 }, cookie);
+    expect(await switched.text()).toContain('"ok":true');
+    const input = productInput("HTTP-STALE-MUST-NOT-EXIST", 1);
+    const stale = await action("createProductAction", "/en/products", input, cookie);
+    expect(mutationResult(await stale.text())).toEqual({ ok: false, code: "STALE_CONTEXT" });
+    const saved = await pool.query<{ count: number }>("select count(*)::int count from products where tenant_id in ($1,$2) and sku=$3", [memberTenantId, privateTenantId, input.sku]);
+    expect(saved.rows[0]?.count).toBe(0);
+    const current = await readCatalog("", cookie);
+    expect(current.data.map(({ sku }) => sku)).toContain(PRIVATE_PRODUCT_SKU);
+    expect(current.data.map(({ sku }) => sku)).not.toContain(OWN_PRODUCT_SKU);
+  });
+
+  it.each(["revoked", "inactive-tenant", "invalid-context"] as const)("fails closed for %s on reads and product mutations", async (condition) => {
+    if (!enabledServer) throw new Error("Test fixture unavailable.");
+    const cookie = await authenticate(enabledServer, false, `-product-${condition}`);
+    const identity = await identityFor(cookie);
+    await pool.query("insert into tenant_memberships(tenant_id,user_id,role) values ($1,$2,'MANAGER')", [memberTenantId, identity.user.id]);
+    await pool.query("insert into session_tenant_context(session_id,tenant_id) values ($1,$2)", [identity.session.id, memberTenantId]);
+    if (condition === "revoked") await pool.query("update tenant_memberships set status='INACTIVE' where tenant_id=$1 and user_id=$2", [memberTenantId, identity.user.id]);
+    if (condition === "inactive-tenant") await pool.query("update tenants set status='INACTIVE' where id=$1", [memberTenantId]);
+    if (condition === "invalid-context") await pool.query("update session_tenant_context set tenant_id=$1 where session_id=$2", [privateTenantId, identity.session.id]);
+    try {
+      const read = await fetch(`${enabledServer.baseUrl}/api/products`, { headers: { Cookie: cookie } });
+      expect(read.status).toBe(403);
+      expect(await read.text()).not.toContain(OWN_PRODUCT_SKU);
+      const write = await action("createProductAction", "/en/products", productInput(`HTTP-${condition}`, await currentVersion(cookie)), cookie);
+      expect(mutationResult(await write.text())).toEqual({ ok: false, code: "FORBIDDEN" });
+      const page = await fetch(`${enabledServer.baseUrl}/ar/products`, { headers: { Cookie: cookie } });
+      const body = await page.text();
+      expect(body).not.toContain(OWN_PRODUCT_SKU);
+      expect(body).not.toContain(PRIVATE_PRODUCT_SKU);
+    } finally {
+      if (condition === "inactive-tenant") await pool.query("update tenants set status='ACTIVE' where id=$1", [memberTenantId]);
+    }
   });
 });

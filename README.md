@@ -4,10 +4,10 @@ Makhzan is a bilingual (English and Arabic) multi-tenant inventory management
 platform for small and medium businesses in the MENA region.
 
 The current application is a single Next.js App Router workspace at `apps/web`.
-Its dashboard supports English and Arabic and includes a read-only product
-catalog backed by synthetic demo data. Better Auth provides email/password
+Its dashboard supports English and Arabic and includes tenant-owned PostgreSQL
+Products with create/edit/archive/reactivate and server-side queries. Better Auth provides email/password
 identity and database-backed sessions. Company onboarding, tenant memberships,
-RBAC, and company selection protect the workspace. Product mutations are deferred.
+RBAC, and company selection protect the workspace. Inventory/stock operations remain deferred.
 
 ## Prerequisites and first checkout
 
@@ -121,7 +121,6 @@ host dependencies, and generated output through `.dockerignore`.
 | Setting | Default | Purpose |
 | --- | --- | --- |
 | `WEB_PORT` | `3000` | Host port for the dashboard |
-| `ENABLE_DEMO_PRODUCTS_API` | `false` | Enables the synthetic `GET /api/products` endpoint in production |
 | `DOCKER_WATCH_POLLING` | `1` | Enables 1-second file polling in Docker; use `0` for native events |
 | `BETTER_AUTH_SECRET` | Development fallback | Cookie-signing secret; use a unique random value of at least 32 characters outside local development |
 | `BETTER_AUTH_URL` | `http://localhost:3000` | Public origin used by Better Auth; HTTPS is required in production |
@@ -201,6 +200,7 @@ docker compose --profile database-test up -d --wait postgres-test
 docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:db
 docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:auth
 docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:tenancy
+docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:products
 docker compose --profile database-test rm -sf postgres-test
 ```
 
@@ -231,6 +231,7 @@ docker compose run --rm --no-deps web sh -c "npm run typecheck && npm run lint &
 docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:db
 docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:auth
 docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:tenancy
+docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:products
 docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run test:http
 docker compose run --rm --no-deps -e NODE_ENV=production -e BETTER_AUTH_SECRET=synthetic-build-secret-at-least-32-characters -e BETTER_AUTH_URL=https://build.invalid -e AUTH_TRUSTED_ORIGINS=https://build.invalid web npm run build
 docker compose --profile database-test rm -sf postgres-test
@@ -240,16 +241,21 @@ docker compose up -d --wait web
 The HTTP suite creates an isolated production build, starts real Next.js servers
 on available loopback ports, and removes its generated files after the run. It
 does not depend on the development container being active. Run the repeatable
-Products benchmark separately with:
+PostgreSQL Products benchmark after migrations/tests, before removing `postgres-test`:
 
 ```sh
-docker compose run --rm --no-deps web npm run benchmark:products
+docker compose run --rm --no-deps -e NODE_ENV=test -e TEST_DATABASE_URL=postgresql://makhzan_test:makhzan_test@postgres-test:5432/makhzan_test web npm run benchmark:products:db
 ```
+
+It uses rollback-only synthetic 1k/10k fixtures. Measurements and limits are in
+[Products query performance](docs/performance/products-postgres.md). The older
+`benchmark:products` is an isolated JavaScript fixture exercise, not application
+or PostgreSQL performance evidence.
 
 `npm test` runs the Unit/Component suite followed by the HTTP suite. The guarded
 database and authentication suites are separate because they require PostgreSQL.
 Individual commands are `npm run test:unit`, `npm run test:http`,
-`npm run test:db`, `npm run test:auth`, `npm run test:tenancy`, and
+`npm run test:db`, `npm run test:auth`, `npm run test:tenancy`, `npm run test:products`, and
 `npm run test:watch`.
 Missing test files fail rather than being silently skipped. Existing
 development-tool audit findings must be reviewed separately; do not use
@@ -259,7 +265,7 @@ development-tool audit findings must be reviewed separately; do not use
 
 GitHub Actions runs `npm ci`, the full dependency audit (blocking high/critical
 findings while reporting moderate findings), migration consistency, typecheck,
-ESLint, Unit/Component tests, database, authentication, and tenant authorization integration tests,
+ESLint, Unit/Component tests, database, authentication, tenant authorization and Products integration tests,
 a production build, and real HTTP integration tests for every push and pull request. PostgreSQL is an
 isolated CI service with synthetic credentials. The workflow uses the Node.js version in
 `.nvmrc` and caches npm downloads using the root lockfile; it does not cache
@@ -315,7 +321,7 @@ hard-disabled until a real email provider, email verification, password
 recovery, and production abuse controls are configured. Sign-in remains
 available for pre-provisioned accounts.
 
-Dashboard and the synthetic demo catalog require an active company membership and
+Dashboard and the database Products catalog require an active company membership and
 selection. New accounts land on `/[locale]/onboarding`, which atomically creates
 their first company and OWNER membership. Users with any membership, including an
 inactive one, cannot create another company through initial onboarding. Members
@@ -330,6 +336,23 @@ companies are never automatically claimed. See [tenant architecture](docs/archit
 
 Company-selection UX test results and browser-verification limitations are recorded
 in [Group C verification](docs/verification/group-c-company-selection.md).
+
+## Products
+
+New companies start with an empty catalog; no fictional records are imported.
+OWNER/MANAGER may create, edit, archive and reactivate Products. STAFF/VIEWER are
+read-only. Search, exact category/status filters, allowlisted sorts and bounded
+LIMIT/OFFSET pages run in PostgreSQL, not over one browser-loaded page. Selection
+applies only to loaded rows and clears on page/filter/company changes.
+
+`GET /api/products` is an authenticated, tenant-scoped, read-only paginated endpoint
+with private/no-store responses; the former demo flag is obsolete. The UI reads
+services directly and uses protected Server Actions for mutations. See
+[Products architecture](docs/architecture/products.md) for contracts, authorization,
+query parameters and deferred features. Browser automation remains policy-blocked;
+Group D visual/browser interactions are NOT VERIFIED by the HTTP/component suites.
+Results, limitations and the changed-file inventory are recorded in
+[Group D verification](docs/verification/group-d-products.md).
 
 ## Troubleshooting
 

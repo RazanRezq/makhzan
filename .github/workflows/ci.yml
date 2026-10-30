@@ -80,6 +80,11 @@ jobs:
         env:
           NODE_ENV: test
 
+      - name: Run Products Integration Tests
+        run: npm run test:products
+        env:
+          NODE_ENV: test
+
       - name: Build production application
         run: npm run build
         env:

@@ -8,7 +8,7 @@ import { hasPermission } from "@/lib/tenancy/permissions";
 import type { TenantPermission, TenantRole } from "@/lib/tenancy/permissions";
 
 const navigationPermissions: Partial<Record<(typeof navigationItems)[number]["key"], TenantPermission>> = {
-  overview: "dashboard.read", products: "demoProducts.read", inventory: "inventory.read",
+  overview: "dashboard.read", products: "products.read", inventory: "inventory.read",
   purchases: "purchaseOrders.read", sales: "salesOrders.read", warehouses: "warehouses.read",
   reports: "reports.read", settings: "tenantSettings.read",
 };

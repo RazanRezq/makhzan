@@ -1,11 +1,15 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { headers } from "next/headers";
 import { hasLocale } from "next-intl";
 import { getTranslations } from "next-intl/server";
 import { ProductsTable } from "@/features/products/components/products-table";
 import { routing } from "@/i18n/routing";
 import { requireTenantPage } from "@/server/tenants/page-access";
-import { listProducts } from "@/server/products/product.service";
+import { listProducts, ProductError } from "@/server/products/product.service";
+import { Link } from "@/i18n/navigation";
+import type { ProductListResult } from "@/lib/products/catalog.types";
+import { TenancyError } from "@/server/tenants/security";
 
 export const instant = false;
 
@@ -23,14 +27,47 @@ export async function generateMetadata({
 
 export default async function ProductsPage({
   params,
+  searchParams,
 }: PageProps<"/[locale]/products">) {
   const { locale } = await params;
   if (!hasLocale(routing.locales, locale)) notFound();
-  await requireTenantPage(locale, "demoProducts.read");
-  const [products, t] = await Promise.all([
-    listProducts(),
-    getTranslations({ locale, namespace: "Products" }),
-  ]);
+  const tenant = await requireTenantPage(locale, "products.read");
+  const t = await getTranslations({ locale, namespace: "Products" });
+  let listing: ProductListResult;
+  try {
+    listing = await listProducts(
+      await headers(),
+      await searchParams,
+      tenant.version,
+    );
+  } catch (error) {
+    if (error instanceof TenancyError && error.code === "STALE_CONTEXT") {
+      return (
+        <div role="alert" className="space-y-4 rounded-lg border p-6">
+          <p>{t("errors.STALE_CONTEXT")}</p>
+          <a
+            href={`/${locale}/products`}
+            className="inline-flex min-h-11 items-center underline"
+          >
+            {t("actions.refreshWorkspace")}
+          </a>
+        </div>
+      );
+    }
+    if (!(error instanceof ProductError) || error.code !== "INVALID_INPUT")
+      throw error;
+    return (
+      <div role="alert" className="space-y-4 rounded-lg border p-6">
+        <p>{t("errors.INVALID_INPUT")}</p>
+        <Link
+          href="/products"
+          className="inline-flex min-h-11 items-center underline"
+        >
+          {t("clearFilters")}
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="min-w-0 space-y-8">
@@ -46,12 +83,13 @@ export default async function ProductsPage({
             {t("description")}
           </p>
         </div>
-        <span className="w-fit rounded-full border bg-muted px-3 py-1.5 text-xs font-medium text-muted-foreground">
-          {t("demoLabel")}
-        </span>
       </div>
 
-      <ProductsTable products={products} locale={locale} />
+      <ProductsTable
+        key={`${tenant.tenantId}:${listing.contextVersion}`}
+        listing={listing}
+        locale={locale}
+      />
     </div>
   );
 }

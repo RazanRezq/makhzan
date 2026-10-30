@@ -13,12 +13,12 @@
 - The root `start` script delegates to `apps/web` and runs `next start`. Next.js
   reads Heroku's assigned `PORT`; no Procfile is required because a root start
   script exists.
-- `NODE_ENV` must remain `production`. `ENABLE_DEMO_PRODUCTS_API` should remain
-  unset or `false` unless public access to the synthetic read-only endpoint is
-  deliberately approved. The localized product pages do not require that API.
-- The current synthetic dashboard needs no database, Redis, worker, or secrets.
-  Future authentication, database, and R2 credentials must be Heroku config vars,
-  never committed files or build arguments.
+- `NODE_ENV` must remain `production`. Group D replaces the demo Products API
+  with an authenticated, tenant-scoped read-only endpoint; the old demo flag is
+  obsolete. Localized Products pages read services directly, not that API.
+- PostgreSQL and server-only database/auth configuration are required for the
+  current application. Credentials belong in Heroku config vars, never committed
+  files or build arguments. Redis/workers and uploads remain deferred.
 
 ## Platform constraints and cost
 

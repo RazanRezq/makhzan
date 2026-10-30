@@ -15,11 +15,13 @@
     "test:db": "vitest run --config vitest.db.config.mts",
     "test:auth": "vitest run --config vitest.auth.config.mts",
     "test:tenancy": "vitest run --config vitest.tenancy.config.mts",
+    "test:products": "vitest run --config vitest.products.config.mts",
     "test:watch": "vitest --config vitest.unit.config.mts",
     "db:generate": "drizzle-kit generate",
     "db:check": "drizzle-kit check",
     "db:migrate": "drizzle-kit migrate",
-    "benchmark:products": "node scripts/benchmark-products.mts"
+    "benchmark:products": "node scripts/benchmark-products.mts",
+    "benchmark:products:db": "node scripts/benchmark-products-db.mts"
   },
   "dependencies": {
     "@radix-ui/react-dialog": "^1.3.1",
